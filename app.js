@@ -522,6 +522,11 @@ $('#btnInstalar').onclick = async ()=>{
   promptInstalar = null; $('#bannerInstalar').hidden = true;
 };
 window.addEventListener('appinstalled', ()=>{ $('#bannerInstalar').hidden = true; });
+try{
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  const instalada = window.navigator.standalone===true || matchMedia('(display-mode: standalone)').matches;
+  if(ios && !instalada) $('#bannerIos').hidden = false;
+}catch(e){}
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }

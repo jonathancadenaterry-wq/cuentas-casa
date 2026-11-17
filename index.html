@@ -74,6 +74,8 @@ button{cursor:pointer}
 .btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;background:var(--accent);color:#fff}
 :root[data-theme="dark"] .btn{color:#06232C}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn{color:#06232C}}
+:root .btn.ghost,:root:not([data-theme="light"]) .btn.ghost{color:var(--ink)}
+:root .btn.danger,:root:not([data-theme="light"]) .btn.danger{color:var(--out)}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn.danger{background:transparent;color:var(--out);border:1px solid var(--out)}
 .btn:disabled{opacity:.55}
@@ -166,6 +168,9 @@ button{cursor:pointer}
   <div class="instalar" id="bannerInstalar" hidden>
     <span>Instálala para abrirla como una app, incluso sin internet.</span>
     <button class="btn" id="btnInstalar">Instalar</button>
+  </div>
+  <div class="instalar" id="bannerIos" hidden>
+    <span>Para instalarla en iPhone: en Safari toca <b>Compartir</b> (el cuadro con la flecha) y luego <b>Agregar a pantalla de inicio</b>. Después ábrela solo desde ese ícono.</span>
   </div>
 
   <div id="estado"></div>
