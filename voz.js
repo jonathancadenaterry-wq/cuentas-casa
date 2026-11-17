@@ -28,16 +28,17 @@ const CAT_GASTO = [
   ['casa', /\b(casa|arriendo|alquiler|ferreteria|limpieza|detergente|gas|tanque|muebles?|cocina)\b/],
   ['gustos', /\b(helados?|cine|paseo|salida|regalos?|gustos?|cumpleanos|fiesta)\b/],
   ['trabajo', /\b(trabajo|oficina)\b/],
-  ['comida', /\b(compras?|comida|comidas|mercado|supermercado|super|tienda|viveres|almuerzos?|desayunos?|meriendas?|cenas?|pan|frutas?|verduras?|carne|pollo|pescado|arroz|restaurante|comedor|encebollado|ceviche|salchipapas?|hamburguesas?|pizza|snacks?|golosinas)\b/]
+  ['comida', /\b(compras?|comida|comidas|mercado|supermercado|super|tienda|viveres|almuerzos?|desayunos?|meriendas?|cenas?|pan|frutas?|verduras?|carne|pollo|pescado|arroz|restaurante|comedor|encebollado|ceviche|salchipapas?|hamburguesas?|pizza|snacks?|golosinas|aceite|azucar|sal|huevos?|leche|queso|atun|sardinas?|fideos|tallarin|harina|cafe|avena|mantequilla|manteca|jabon|jabones|shampoo|champu|papel higienico|pasta dental|cloro|lavaplatos|platanos?|verde|maduro|yuca|papas?|cebollas?|tomates?|limones?|gaseosas?|colas?|refrescos?|agua de botella|bidon|botellon)\b/]
 ];
 const CAT_INGRESO = [
   ['negocio', /\b(spa|sparati|negocio|clientas?|clientes?)\b/],
   ['sueldo', /\b(sueldo|salario|quincena|rol|pago del ministerio)\b/],
   ['ventas', /\b(ventas?|vendi|vendimos|vendio)\b/],
-  ['prestamo', /\b(prestamo|prestaron|presto)\b/]
+  ['prestamo', /\b(prestamo|prestaron|presto)\b/],
+  ['otros_in', /\b(deposito|depositaron|transferencia|transfirieron|devolvieron|devolucion|bono|aguinaldo|decimo|utilidades|regalaron)\b/]
 ];
 const RX_PRED = /\b(predic\w*|ministerio|servicio del campo|revisitas?|precursor\w*)\b/;
-const RX_INGRESO = /\b(cobre|cobramos|cobro|recibi|recibimos|me pagaron|nos pagaron|le pagaron|sueldo|salario|quincena|ingreso|ingresaron|gane|ganamos|vendi|vendimos|me dieron|nos dieron)\b/;
+const RX_INGRESO = /\b(cobre|cobramos|cobro|cobrado|recibi|recibimos|recibido|recibida|recibidos|me pagaron|nos pagaron|le pagaron|sueldo|salario|quincena|ingreso|ingresos|ingresaron|ingreso dinero|entro|entraron|gane|ganamos|ganancia|vendi|vendimos|me dieron|nos dieron|me prestaron|nos prestaron|prestamo recibido|deposito|depositaron|me depositaron|nos depositaron|transferencia recibida|me transfirieron|nos transfirieron|me devolvieron|nos devolvieron|devolucion|bono|aguinaldo|decimo|utilidades|me regalaron|nos regalaron)\b/;
 const RX_GASTO = /\b(gaste|gastamos|gasto|pague|pagamos|compre|compramos|costo|salio|cuesta|pagar|comprar|gastar)\b/;
 const RX_DINERO = /\b(dolares|dolar|usd|centavos?)\b/;
 const RX_PREVISTO = /\b(falta|faltan|tengo que|tenemos que|hay que|debo|debemos|voy a|vamos a|por pagar|por cobrar|toca pagar|toca cobrar)\b/;
@@ -173,10 +174,44 @@ function interpretar(texto, op){
     if(mm){ r.cat = id; r.nota = mayus(mm[1]==='sparati' ? 'spa' : mm[1]); break; }
   }
   if(!r.cat) r.cat = r.tipo==='gasto' ? 'otros' : 'otros_in';
+  const desc = descripcion(texto);
+  if(desc) r.nota = desc;
   if(r.tipo==='ingreso' && r.cat==='sueldo' && !r.nota) r.nota = 'Sueldo';
   r.estado = previsto ? 'previsto' : 'hecho';
   return r;
 }
 
-raiz.CCVoz = {interpretar, normalizar};
+// Detalle: lo que se dijo, sin montos, fechas ni verbos. "gasté 5 dólares en jabón y aceite" → "Jabón y aceite"
+const RELLENO = new Set(('gaste gastamos gasto gastar pague pagamos pagar pago compre compramos comprar costo cuesta salio '+
+  'cobre cobramos cobro cobrado recibi recibimos me nos le les se pagaron dieron prestaron depositaron transfirieron devolvieron regalaron '+
+  'tengo tenemos que hay debo debemos voy vamos a falta faltan toca por para en de del el la los las un una unos unas al con '+
+  'dolares dolar usd centavos centavo plata dinero hoy ayer anteayer antier manana esta este pasado pasada semana mes '+
+  'lunes martes miercoles jueves viernes sabado domingo enero febrero marzo abril mayo junio julio agosto septiembre setiembre octubre noviembre diciembre '+
+  'y o e mas menos medio media punto coma').split(' '));
+const CONECTORES = new Set('y o e de del en con para por la el los las un una al a'.split(' '));
+function sinTilde(w){ return w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
+function descripcion(texto){
+  const tk = String(texto||'').replace(/[$]/g,' ').split(/\s+/).filter(Boolean);
+  const out = [];
+  for(let i=0; i<tk.length; i++){
+    const crudo = tk[i].replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'');
+    if(!crudo) continue;
+    const w = sinTilde(crudo);
+    if(/\d/.test(w) || w in UNI || w in DEC || w in CEN || w==='mil') continue;
+    if(RELLENO.has(w)){
+      // "y", "de", "con"… se quedan solo si están entre dos palabras que sí se guardan
+      if(CONECTORES.has(w) && out.length){ out.push({w:crudo.toLowerCase(), con:true}); }
+      continue;
+    }
+    out.push({w:crudo, con:false, coma:/,$/.test(tk[i])});
+  }
+  while(out.length && out[0].con) out.shift();
+  while(out.length && out[out.length-1].con) out.pop();
+  const limpio = [];
+  for(const x of out){ if(x.con && limpio.length && limpio[limpio.length-1].con) continue; limpio.push(x); }
+  const s = limpio.map((x,i)=> x.w + (x.coma && limpio[i+1] && !limpio[i+1].con ? ',' : '')).join(' ').slice(0,80);
+  return s ? s.charAt(0).toUpperCase()+s.slice(1) : '';
+}
+
+raiz.CCVoz = {interpretar, normalizar, descripcion};
 })(typeof self!=='undefined' ? self : globalThis);

@@ -9,7 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => (c<0 ? '−' : '')+fmt.format(Math.abs(c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '8';
+const VERSION_APP = '9';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -73,6 +73,7 @@ function parseSuma(str){
   return total;
 }
 const esSuma = s => /\d\s*[+-]\s*\d/.test(String(s||''));
+const cap = s => s ? s.charAt(0).toUpperCase()+s.slice(1) : s;
 const montoTexto = c => ((c||0)/100).toFixed(2).replace('.',',');
 
 function fechaCorta(iso){
@@ -293,7 +294,7 @@ function renderCats(){
     }
     const p = prev[f.id] ? prev[f.id].h : 0;
     let vs = '';
-    if(p>0 || f.h>0){
+    if(totAnt>0 && (p>0 || f.h>0)){
       const d = f.h-p;
       vs = p===0 ? '<span>'+nAnt+': $0</span>' : (Math.abs(d)<100 ? '<span>Igual que '+nAnt+'</span>' : '<span class="'+(d>0?'c-out':'c-in')+'">'+(d>0?'+':'−')+money(Math.abs(d))+' vs '+nAnt+'</span>');
     }
@@ -310,15 +311,26 @@ function fechaLarga(iso){
   if(iso===isoDe(ay)) return 'Ayer';
   return DIAS[new Date(y,m-1,d).getDay()]+' '+d+' de '+MESES[m-1];
 }
-function htmlMov(x, conFecha){
+function htmlMov(x, op){
+  op = op===true ? {fecha:true} : (op||{});
+  const conFecha = !!op.fecha, conMarcar = op.marcar!==undefined ? op.marcar : !conFecha;
   const ci = catInfo(x.tipo,x.cat);
   const prev = x.estado==='previsto';
   return '<div class="mov-wrap"><button class="mov'+(prev?' previsto':'')+'" data-id="'+esc(x.id)+'">'+
     '<span class="dot" style="background:'+ci.c+'"></span>'+
-    '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(conFecha?'<span class="f">'+esc(fechaLarga(x.fecha))+(x.fecha.slice(0,4)!==String(new Date().getFullYear())?' '+x.fecha.slice(0,4):'')+'</span>':'')+(x.nota?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+(x.fijo?'<span class="pill">Cada mes</span>':'')+'</div></span>'+
+    '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(conFecha?'<span class="f">'+esc(fechaLarga(x.fecha))+(x.fecha.slice(0,4)!==String(new Date().getFullYear())?' '+x.fecha.slice(0,4):'')+'</span>':'')+(x.nota && x.nota.toLowerCase()!==ci.n.toLowerCase()?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+(x.fijo?'<span class="pill">Cada mes</span>':'')+'</div></span>'+
     '<span class="m num '+(x.tipo==='ingreso'?'c-in':'c-out')+'">'+(x.tipo==='ingreso'?'+ ':'− ')+money(x.monto)+'</span></button>'+
-    (prev && !conFecha ? '<button class="marcar" data-marcar="'+esc(x.id)+'">'+(x.tipo==='ingreso'?'Ya se cobró ✓':'Ya se pagó ✓')+'</button>' : '')+
+    (prev && conMarcar ? '<button class="marcar" data-marcar="'+esc(x.id)+'">'+(x.tipo==='ingreso'?'Ya se cobró ✓':'Ya se pagó ✓')+'</button>' : '')+
   '</div>';
+}
+function agruparPorDia(items, tituloExtra){
+  const orden = [...items].sort((a,b)=> b.fecha.localeCompare(a.fecha) || (b.creado||0)-(a.creado||0));
+  const grupos = [];
+  for(const x of orden){ const l = grupos[grupos.length-1]; if(l && l.f===x.fecha) l.items.push(x); else grupos.push({f:x.fecha, items:[x]}); }
+  return grupos.map(g=>({...g, tit:'<div class="dia-tit"><span>'+esc(cap(fechaLarga(g.f)))+'</span>'+(tituloExtra?'<span class="dt">'+tituloExtra(g.items)+'</span>':'')+'</div>'}));
+}
+function cabLista(n, id){
+  return '<div class="lista-cab"><h3>Últimos registros</h3><button type="button" class="btn ghost chico" id="'+id+'">Ver todos ('+n+')</button></div>';
 }
 function renderLista(delMes){
   const box = $('#lista');
@@ -326,14 +338,9 @@ function renderLista(delMes){
     box.innerHTML = '<div class="vacio">Aún no hay movimientos en '+esc(nombreMes(mes))+'.<br>Toca <b>− Gasto</b> o <b>+ Ingreso</b> para anotar el primero.</div>';
     return;
   }
-  const orden = [...delMes].sort((a,b)=> b.fecha.localeCompare(a.fecha) || (b.creado||0)-(a.creado||0));
-  const grupos = [];
-  for(const x of orden){
-    const last = grupos[grupos.length-1];
-    if(last && last.f===x.fecha) last.items.push(x); else grupos.push({f:x.fecha,items:[x]});
-  }
-  box.innerHTML = grupos.map(gr=>'<div class="dia"><div class="dia-tit">'+esc(fechaLarga(gr.f))+'</div>'+
-    gr.items.map(x=>htmlMov(x,false)).join('')+'</div>').join('');
+  const ult = [...delMes].sort((a,b)=> (b.creado||0)-(a.creado||0)).slice(0,3);
+  box.innerHTML = cabLista(delMes.length, 'verTodosC') + ult.map(x=>htmlMov(x,{fecha:true, marcar:true})).join('');
+  $('#verTodosC').onclick = ()=>abrirTodos('cuentas');
 }
 $('#lista').addEventListener('click', e=>{
   const m = e.target.closest('[data-marcar]');
@@ -777,15 +784,86 @@ function renderPred(){
     box.innerHTML = '<div class="vacio">'+(propio ? 'Aún no hay predicación anotada en '+esc(nombreMes(mes))+'.<br>Toca <b>+ Anotar predicación</b> al volver de salir.' : 'Aún no llegan registros de '+esc(nombre(verQuien))+' en '+esc(nombreMes(mes))+'.<br>Pídele que te envíe sus datos.')+'</div>';
     return;
   }
-  const orden = [...r.rs].sort((a,b)=> b.fecha.localeCompare(a.fecha) || (b.creado||0)-(a.creado||0));
-  const grupos = [];
-  for(const x of orden){ const l = grupos[grupos.length-1]; if(l && l.f===x.fecha) l.items.push(x); else grupos.push({f:x.fecha, items:[x]}); }
-  box.innerHTML = grupos.map(g=>'<div class="dia"><div class="dia-tit">'+esc(fechaLarga(g.f))+'</div>'+g.items.map(x=>{
-    const det = x.rev ? esc(x.rev+(x.rev===1?' revisita':' revisitas')) : '';
-    const tag = propio ? 'button' : 'div';
-    return '<'+tag+' class="mov"'+(propio?' data-pid="'+esc(x.id)+'"':'')+'><span class="dot pd"></span><span><div class="t">'+esc(x.nota || (x.min ? 'Predicación' : 'Solo revisitas'))+'</div>'+(det?'<div class="s">'+det+'</div>':'')+'</span><span class="m num" style="color:var(--pred)">'+esc(x.min?fmtMin(x.min):'')+'</span></'+tag+'>';
-  }).join('')+'</div>').join('');
+  const ult = [...r.rs].sort((a,b)=> (b.creado||0)-(a.creado||0)).slice(0,3);
+  box.innerHTML = cabLista(r.rs.length, 'verTodosP') + ult.map(x=>htmlPred(x, propio, true)).join('');
+  $('#verTodosP').onclick = ()=>abrirTodos('pred');
 }
+function htmlPred(x, propio, conFecha){
+  const det = [conFecha ? cap(fechaLarga(x.fecha)) : '', x.rev ? x.rev+(x.rev===1?' revisita':' revisitas') : ''].filter(Boolean).map(esc).join(' · ');
+  const tag = propio ? 'button' : 'div';
+  return '<'+tag+' class="mov"'+(propio?' type="button" data-pid="'+esc(x.id)+'"':'')+'><span class="dot pd"></span><span><div class="t">'+esc(x.nota || (x.min ? 'Predicación' : 'Solo revisitas'))+'</div>'+(det?'<div class="s">'+det+'</div>':'')+'</span><span class="m num" style="color:var(--pred)">'+esc(x.min?fmtMin(x.min):'')+'</span></'+tag+'>';
+}
+
+// ---------- Todos los registros del mes ----------
+let todosModo = null;
+function abrirTodos(modo){ todosModo = modo; renderTodos(); $('#veloTodos').hidden = false; }
+function renderTodos(){
+  if(!todosModo) return;
+  if(todosModo==='cuentas'){
+    const r = calc(mes);
+    $('#tTit').textContent = 'Movimientos de '+nombreMes(mes);
+    $('#tRes').innerHTML = '<span>'+r.delMes.length+(r.delMes.length===1?' movimiento':' movimientos')+'</span><span>Entró <b class="c-in">'+money(r.ingH)+'</b></span><span>Salió <b class="c-out">'+money(r.gasH)+'</b></span>'+((r.ingP||r.gasP)?'<span>Previsto <b>'+money(r.ingP-r.gasP)+'</b></span>':'');
+    const sub = items=>{ const s = items.filter(x=>x.estado!=='previsto').reduce((a,x)=>a+signo(x),0); return s ? (s>0?'+ ':'')+money(s) : ''; };
+    $('#tLista').innerHTML = r.delMes.length ? agruparPorDia(r.delMes, sub).map(g=>'<div class="dia">'+g.tit+g.items.map(x=>htmlMov(x,{marcar:true})).join('')+'</div>').join('') : '<div class="vacio">No hay movimientos este mes.</div>';
+  } else {
+    const q = verQuien===null ? 0 : verQuien, propio = q===(E.yo===null?0:E.yo);
+    const r = resumenPred(q, mes);
+    $('#tTit').textContent = 'Predicación de '+nombre(q)+' · '+nombreMes(mes);
+    $('#tRes').innerHTML = '<span>Horas <b>'+fmtMin(r.min)+'</b></span><span>Revisitas <b>'+r.rev+'</b></span><span>Días <b>'+r.dias+'</b></span><span>Cursos <b>'+r.cursos+'</b></span>';
+    $('#tLista').innerHTML = r.rs.length ? agruparPorDia(r.rs, items=>{ const m = items.reduce((a,x)=>a+x.min,0); return m ? fmtMin(m) : ''; }).map(g=>'<div class="dia">'+g.tit+g.items.map(x=>htmlPred(x, propio, false)).join('')+'</div>').join('') : '<div class="vacio">No hay registros este mes.</div>';
+  }
+}
+$('#tCerrar').onclick = ()=>{ $('#veloTodos').hidden = true; todosModo = null; };
+$('#veloTodos').addEventListener('click', e=>{ if(e.target.id==='veloTodos'){ $('#veloTodos').hidden = true; todosModo = null; } });
+$('#tLista').addEventListener('click', e=>{
+  const m = e.target.closest('[data-marcar]');
+  if(m){ const x=E.movs[m.getAttribute('data-marcar')]; if(x){ x.estado='hecho'; x.mod=ahora(); guardar(); render(); renderTodos(); toast(x.tipo==='ingreso'?'Marcado como cobrado':'Marcado como pagado'); } return; }
+  const b = e.target.closest('[data-id]'), bp = e.target.closest('[data-pid]');
+  if(b){ const x = E.movs[b.getAttribute('data-id')]; if(x){ $('#veloTodos').hidden = true; todosModo = null; abrirForm(x.tipo,x); } }
+  else if(bp){ const x = E.pred[bp.dataset.pid]; if(x){ $('#veloTodos').hidden = true; todosModo = null; abrirPred(x); } }
+});
+
+// ---------- Meses anteriores de predicación ----------
+function abrirMeses(){
+  const q = verQuien===null ? 0 : verQuien;
+  const act = ym(new Date());
+  $('#mmTit').textContent = 'Predicación de '+nombre(q)+' por mes';
+  // Desde el primer mes con registros (como máximo 24 meses atrás) hasta el mes actual
+  const meses = new Set();
+  for(const x of Object.values(E.pred)) if(!x.borrado && x.quien===q) meses.add(x.mes);
+  for(const c of Object.values(E.cursos)) if(!c.borrado && c.quien===q) for(const f of fechasCurso(c)) meses.add(f.slice(0,7));
+  let ini = [...meses].filter(m=>m<=act).sort()[0] || act;
+  const tope = addMes(act,-23); if(ini < tope) ini = tope;
+  const lista = []; for(let m = act; m >= ini; m = addMes(m,-1)) lista.push(m);
+  const meta = metaDe(q);
+  // Año de servicio: de septiembre a agosto
+  const [ya, ma] = act.split('-').map(Number);
+  const inicioAnio = (ma>=9 ? ya : ya-1)+'-09';
+  let totAnio = 0, mesesAnio = 0;
+  for(let m = inicioAnio; m <= act; m = addMes(m,1)){ totAnio += resumenPred(q,m).min; mesesAnio++; }
+  const y0 = Number(inicioAnio.slice(0,4));
+  $('#mmAnio').innerHTML = '<span>Año de servicio '+y0+'-'+(y0+1)+' (desde septiembre)</span><b>'+fmtMin(totAnio)+'</b><span>'+mesesAnio+(mesesAnio===1?' mes':' meses')+' contados, incluido '+MESES[ma-1]+'.</span>';
+  $('#mmLista').innerHTML = lista.map(m=>{
+    const r = resumenPred(q,m);
+    const nada = !r.min && !r.rev && !r.cursos;
+    let detalle = nada ? 'Sin registros' : [r.cursos+(r.cursos===1?' curso':' cursos'), r.rev+(r.rev===1?' revisita':' revisitas'), r.dias+(r.dias===1?' día':' días')].join(' · ');
+    if(meta && !nada){
+      if(r.min>=meta) detalle += ' · meta cumplida';
+      else if(m<act) detalle += ' · faltaron '+fmtMin(meta-r.min);
+      else detalle += ' · faltan '+fmtMin(meta-r.min);
+    }
+    return '<button type="button" class="mes-fila'+(nada?' vacio-m':'')+(m===act?' actual':'')+'" data-mes="'+m+'"><span class="mn">'+esc(cap(nombreMes(m)))+(m===act?' (este mes)':'')+'</span><span class="mh">'+fmtMin(r.min)+'</span><span class="md">'+esc(detalle)+'</span></button>';
+  }).join('');
+  $('#veloMeses').hidden = false;
+}
+$('#pMeses').onclick = abrirMeses;
+$('#mmCerrar').onclick = ()=>$('#veloMeses').hidden = true;
+$('#veloMeses').addEventListener('click', e=>{ if(e.target.id==='veloMeses') $('#veloMeses').hidden = true; });
+$('#mmLista').addEventListener('click', e=>{
+  const b = e.target.closest('[data-mes]'); if(!b) return;
+  mes = b.dataset.mes; $('#veloMeses').hidden = true; render(); window.scrollTo(0,0);
+});
+
 // ---------- Cursos bíblicos ----------
 let verTerminados = false, cEdit = null, cBorrar = false;
 const cursosDeQ = q => Object.values(E.cursos).filter(c=>!c.borrado && c.quien===q);
@@ -1025,7 +1103,7 @@ function buscar(){
   const g = res.filter(x=>x.tipo==='gasto').reduce((a,x)=>a+x.monto,0);
   const i = res.filter(x=>x.tipo==='ingreso').reduce((a,x)=>a+x.monto,0);
   $('#bTot').innerHTML = res.length+(res.length===1?' movimiento':' movimientos')+(g?' · gastos <b class="c-out">'+money(g)+'</b>':'')+(i?' · ingresos <b class="c-in">'+money(i)+'</b>':'');
-  $('#bLista').innerHTML = res.map(x=>htmlMov(x,true)).join('');
+  $('#bLista').innerHTML = res.map(x=>htmlMov(x,{fecha:true})).join('');
 }
 $('#btnBuscar').onclick = ()=>{ $('#veloBuscar').hidden=false; buscar(); setTimeout(()=>$('#bTexto').focus(),60); };
 $('#bCerrar').onclick = ()=>$('#veloBuscar').hidden=true;
@@ -1196,6 +1274,22 @@ async function actualizarApp(){
   }catch(e){}
   location.reload();
 }
+$('#aBorrarTxt').addEventListener('input', ()=>{ $('#aBorrar').disabled = $('#aBorrarTxt').value.trim().toUpperCase()!=='BORRAR'; });
+$('#aBorrarTxt').addEventListener('keydown', e=>{ if(e.key==='Enter') e.preventDefault(); });
+$('#aBorrar').onclick = ()=>{
+  if($('#aBorrarTxt').value.trim().toUpperCase()!=='BORRAR') return;
+  const t = ahora();
+  // Se marcan como borrados (no se quitan): así, al enviar los datos, el otro celular también los borra
+  for(const col of [E.movs, E.pred, E.cursos]) for(const x of Object.values(col)) if(!x.borrado){ x.borrado = true; x.mod = t; }
+  for(const k of Object.keys(E.predMes)) E.predMes[k] = {cursos:0, mod:t};
+  for(const q of ['0','1']) if(E.predCfg.metas[q]) E.predCfg.metas[q] = {min:0, mod:t};
+  E.config = {base:0, baseMes:null, nombres:E.config.nombres, topes:{}, mod:t};
+  E.ultEnvio = 0; E.ultRecibo = null;
+  guardar();
+  $('#aBorrarTxt').value = ''; $('#aBorrar').disabled = true; $('#aAvanzado').open = false;
+  $('#veloAj').hidden = true; mes = ym(new Date()); render();
+  toast('Listo: la app quedó vacía. Envía tus datos a '+nombre(otro())+' para que allá también se borren.');
+};
 $('#aActualizar').onclick = ()=>{ $('#aActualizar').textContent = 'Actualizando…'; actualizarApp(); };
 $('#aVersion').textContent = 'Versión de la app: '+VERSION_APP;
 // Si la pantalla y el programa no son de la misma versión, se actualiza sola una vez
