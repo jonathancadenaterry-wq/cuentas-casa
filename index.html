@@ -17,7 +17,7 @@
 /* Layout: una sola columna para celular — mes, resumen, fijos, categorías, lista; acciones fijas abajo */
 :root{
   --bg:#F2F5F7; --surface:#FFFFFF; --ink:#14212B; --muted:#5B6976; --line:#DCE3E8;
-  --accent:#0F6E8C; --accent-soft:#E1EFF4; --in:#1C8048; --out:#BF3B27; --warn:#9A6512;
+  --accent:#0F6E8C; --accent-soft:#E1EFF4; --pred:#6A4FC2; --pred-soft:#EFEBFB; --in:#1C8048; --out:#BF3B27; --warn:#9A6512;
   --font-display:'Bricolage Grotesque', system-ui, sans-serif;
   --font-body:'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
@@ -25,13 +25,13 @@
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#0D151B; --surface:#15212A; --ink:#E5ECF1; --muted:#93A3B0; --line:#25333E;
-    --accent:#52B5D3; --accent-soft:#16343F; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
+    --accent:#52B5D3; --accent-soft:#16343F; --pred:#A895F2; --pred-soft:#241E3B; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"]{
   --bg:#0D151B; --surface:#15212A; --ink:#E5ECF1; --muted:#93A3B0; --line:#25333E;
-  --accent:#52B5D3; --accent-soft:#16343F; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
+  --accent:#52B5D3; --accent-soft:#16343F; --pred:#A895F2; --pred-soft:#241E3B; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
   color-scheme: dark;
 }
 *{box-sizing:border-box}
@@ -42,7 +42,7 @@ button{cursor:pointer}
 :focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .num{font-variant-numeric:tabular-nums}
 
-#app{max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 110px);display:flex;flex-direction:column;gap:14px}
+#app{max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 190px);display:flex;flex-direction:column;gap:14px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .top h1{font-family:var(--font-display);font-size:1.35rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .sync{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted)}
@@ -104,7 +104,7 @@ button{cursor:pointer}
 .vacio{color:var(--muted);text-align:center;padding:24px 12px;font-size:.95rem}
 
 .acciones{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:linear-gradient(to top,var(--bg) 70%,transparent);display:flex;justify-content:center}
-.acciones .in{max-width:560px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acciones .in{max-width:560px;width:100%;display:flex;flex-direction:column;gap:10px}
 .acciones button{border:none;border-radius:16px;padding:16px;font-weight:700;font-size:1.05rem;color:#fff}
 .acciones .g{background:var(--out)} .acciones .i{background:var(--in)}
 :root[data-theme="dark"] .acciones button{color:#0D151B}
@@ -168,13 +168,52 @@ button{cursor:pointer}
 .res-tot{font-size:.9rem;color:var(--muted)}
 .res-lista{display:flex;flex-direction:column;gap:8px}
 .mov .s .f{font-weight:600}
+.icon-btn[hidden]{display:none}
+.tab{display:flex;flex-direction:column;gap:14px}
+.tab[hidden]{display:none}
+.acc{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acc[hidden]{display:none}
+#accPred{grid-template-columns:1fr}
+.acciones .p{background:var(--pred)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:4px}
+:root:not(#z) .acciones .tabs button{background:transparent;color:var(--muted);padding:7px 8px;font-size:.82rem;font-weight:700;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+:root:not(#z) .acciones .tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--ink)}
+:root:not(#z) .acciones .tabs button#tabBtnP[aria-selected="true"]{background:var(--pred-soft)}
+.tabs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.persona button[aria-pressed="true"]{background:var(--pred)!important;color:#fff!important}
+.nota-quien{font-size:.85rem;color:var(--muted);margin:-6px 4px 0}
+.resumen.pred{border-top:4px solid var(--pred)}
+.pred-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.anillo{width:86px;height:86px;flex:none}
+.anillo[hidden]{display:none}
+.anillo .fondo{stroke:var(--line)}
+.anillo .lleno{stroke:var(--pred)}
+.anillo text{fill:var(--ink);font-family:var(--font-body);font-weight:700;font-size:15px}
+.pred-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.dato{background:var(--pred-soft);border-radius:14px;padding:10px 6px;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:space-between;text-align:center;font-size:.78rem;font-weight:600;color:var(--muted)}
+.dato b{font-size:1.4rem;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
+.paso{display:flex;align-items:center;gap:8px}
+.paso button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:1.1rem;line-height:1;display:grid;place-items:center}
+.paso button:disabled{opacity:.35}
+.mov .dot.pd{background:var(--pred)}
+.tiempo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tiempo input{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;min-height:48px;font-size:1.3rem;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.tiempo label{font-size:.8rem;color:var(--muted);font-weight:600;display:flex;flex-direction:column;gap:4px}
+.fecha-txt{font-size:.85rem;color:var(--pred);font-weight:700}
+.chip.t[aria-pressed="true"]{border-color:var(--pred);background:var(--pred-soft)}
+.paso.grande{justify-content:center;gap:18px}
+.paso.grande button{width:48px;height:48px;font-size:1.5rem}
+.paso.grande b{font-size:1.8rem;min-width:2ch;text-align:center;font-variant-numeric:tabular-nums}
+#iTexto{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;min-height:170px;font:inherit;line-height:1.5;resize:vertical}
+.btn.morado{background:var(--pred);color:#fff}
+.metas-rapidas{display:flex;gap:8px;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <div id="app">
   <header class="top">
     <div>
-      <h1>Cuentas de la casa</h1>
+      <h1 id="titulo">Cuentas de la casa</h1>
       <span id="soy" class="sync ok">—</span>
     </div>
     <div class="top-btns">
@@ -206,6 +245,7 @@ button{cursor:pointer}
     <button class="icon-btn" id="next" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
   </nav>
 
+  <div class="tab" id="tabCuentas">
   <section class="resumen" aria-label="Resumen del mes">
     <div>
       <div class="meta-lbl">Deberíamos tener a fin de mes</div>
@@ -242,11 +282,51 @@ button{cursor:pointer}
   </section>
 
   <section id="lista" style="display:flex;flex-direction:column;gap:14px" aria-label="Movimientos"></section>
+  </div>
+
+  <div class="tab" id="tabPred" hidden>
+    <div class="seg persona" role="group" aria-label="De quién son las horas" id="pQuien"></div>
+    <p class="nota-quien" id="pNotaQuien"></p>
+    <section class="resumen pred" aria-label="Resumen de predicación">
+      <div class="pred-top">
+        <div>
+          <div class="meta-lbl" id="pLbl">Horas de predicación</div>
+          <div class="meta num" id="pHoras">0 h</div>
+          <div class="meta-nota" id="pMetaTxt"></div>
+        </div>
+        <svg class="anillo" id="pAnillo" viewBox="0 0 72 72" aria-hidden="true" hidden>
+          <circle class="fondo" cx="36" cy="36" r="30" fill="none" stroke-width="7"/>
+          <circle class="lleno" id="pArco" cx="36" cy="36" r="30" fill="none" stroke-width="7" stroke-linecap="round" transform="rotate(-90 36 36)" stroke-dasharray="0 999"/>
+          <text id="pPct" x="36" y="41" text-anchor="middle">0%</text>
+        </svg>
+      </div>
+      <div class="pred-datos">
+        <div class="dato"><span>Cursos bíblicos</span><div class="paso"><button type="button" id="pCurMenos" aria-label="Un curso menos">−</button><b id="pCursos">0</b><button type="button" id="pCurMas" aria-label="Un curso más">+</button></div></div>
+        <div class="dato"><span>Revisitas</span><b id="pRev">0</b></div>
+        <div class="dato"><span>Días que salió</span><b id="pDias">0</b></div>
+      </div>
+      <div class="botones">
+        <button type="button" class="btn morado" id="pInforme">Enviar informe</button>
+        <button type="button" class="btn ghost" id="pMetaBtn">Meta de horas</button>
+      </div>
+    </section>
+    <div id="slotSincP"></div>
+    <section id="pLista" style="display:flex;flex-direction:column;gap:14px" aria-label="Registros de predicación"></section>
+  </div>
 </div>
 
 <div class="acciones"><div class="in">
-  <button class="g" id="addGasto">− Gasto</button>
-  <button class="i" id="addIngreso">+ Ingreso</button>
+  <div class="acc" id="accCuentas">
+    <button class="g" id="addGasto">− Gasto</button>
+    <button class="i" id="addIngreso">+ Ingreso</button>
+  </div>
+  <div class="acc" id="accPred" hidden>
+    <button class="p" id="addPred">+ Anotar predicación</button>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button type="button" role="tab" id="tabBtnC" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M12 13v4M10.5 14.2c0-.7.7-1.2 1.5-1.2s1.5.4 1.5 1"/></svg>Cuentas</button>
+    <button type="button" role="tab" id="tabBtnP" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 5.5C6 4.5 9 4.5 12 6c3-1.5 6-1.5 8-.5V19c-2-1-5-1-8 .5-3-1.5-6-1.5-8-.5z"/><path d="M12 6v13.5"/></svg>Predicación</button>
+  </nav>
 </div></div>
 
 <input type="file" id="archivo" accept=".txt,.json,text/plain,application/json" hidden>
@@ -361,6 +441,84 @@ button{cursor:pointer}
       <button type="button" class="btn ghost" id="aCancelar">Cancelar</button>
       <button type="submit" class="btn" id="aGuardar">Guardar</button>
     </div>
+  </form>
+</div>
+
+<!-- Anotar predicación -->
+<div class="velo" id="veloPred" hidden>
+  <form class="hoja" id="formPred" autocomplete="off">
+    <h3 id="pFormTit">Anotar predicación</h3>
+    <div class="campo">
+      <label for="pFecha">Fecha</label>
+      <input type="date" id="pFecha">
+      <span class="fecha-txt" id="pFechaTxt"></span>
+    </div>
+    <div class="campo">
+      <span class="lbl">Tiempo</span>
+      <div class="chips" id="pChips">
+        <button type="button" class="chip t" data-min="30">30 min</button>
+        <button type="button" class="chip t" data-min="60">1 h</button>
+        <button type="button" class="chip t" data-min="90">1 h 30</button>
+        <button type="button" class="chip t" data-min="120">2 h</button>
+        <button type="button" class="chip t" data-min="180">3 h</button>
+      </div>
+      <div class="tiempo">
+        <label for="pH">Horas<input type="text" id="pH" inputmode="numeric" placeholder="0"></label>
+        <label for="pM">Minutos<input type="text" id="pM" inputmode="numeric" placeholder="0"></label>
+      </div>
+    </div>
+    <div class="campo">
+      <span class="lbl">Revisitas</span>
+      <div class="paso grande"><button type="button" id="pRevMenos" aria-label="Una revisita menos">−</button><b id="pRevN">0</b><button type="button" id="pRevMas" aria-label="Una revisita más">+</button></div>
+    </div>
+    <div class="campo">
+      <label for="pNota">Nota (opcional)</label>
+      <input type="text" id="pNota" maxlength="80" placeholder="Ej.: predicación pública, territorio 12">
+    </div>
+    <div class="error" id="pErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="pCancelar">Cancelar</button>
+      <button type="submit" class="btn morado" id="pGuardar">Guardar</button>
+    </div>
+    <button type="button" class="btn danger" id="pEliminar" hidden>Eliminar</button>
+  </form>
+</div>
+
+<!-- Informe -->
+<div class="velo" id="veloInforme" hidden>
+  <div class="hoja">
+    <h3>Informe del mes</h3>
+    <p class="ayuda">Puedes corregir el texto antes de enviarlo.</p>
+    <textarea id="iTexto" aria-label="Texto del informe"></textarea>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="iCopiar">Copiar</button>
+      <button type="button" class="btn morado" id="iEnviar">Enviar por WhatsApp</button>
+    </div>
+    <button type="button" class="btn ghost" id="iCerrar">Cerrar</button>
+  </div>
+</div>
+
+<!-- Meta -->
+<div class="velo" id="veloMeta" hidden>
+  <form class="hoja" id="formMeta" autocomplete="off">
+    <h3 id="mTit">Meta de horas</h3>
+    <p class="ayuda">Es opcional. Con meta, la app muestra cuánto falta y cuánto conviene salir por día. Queda puesta para los meses siguientes hasta que la quites.</p>
+    <div class="campo">
+      <label for="mHoras">Horas al mes</label>
+      <input type="text" id="mHoras" inputmode="numeric" placeholder="Sin meta">
+      <div class="metas-rapidas" id="mRapidas">
+        <button type="button" class="chip t" data-h="15">15 h</button>
+        <button type="button" class="chip t" data-h="30">30 h</button>
+        <button type="button" class="chip t" data-h="50">50 h</button>
+        <button type="button" class="chip t" data-h="70">70 h</button>
+      </div>
+    </div>
+    <div class="error" id="mErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="mQuitar">Quitar meta</button>
+      <button type="submit" class="btn morado">Guardar</button>
+    </div>
+    <button type="button" class="btn ghost" id="mCancelar">Cancelar</button>
   </form>
 </div>
 

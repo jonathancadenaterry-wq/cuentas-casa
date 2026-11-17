@@ -5,6 +5,7 @@
 const $ = s => document.querySelector(s);
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
+const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => fmt.format((c||0)/100);
 const APP = 'cuentas-casa';
@@ -93,7 +94,11 @@ function textoHace(ms){
 let E = {
   movs:{},                     // id -> movimiento (los borrados quedan marcados para que el borrado viaje al otro celular)
   config:{base:0, baseMes:null, nombres:['Jonathan','Elba'], topes:{}, mod:0},
-  dispositivo:null, yo:null, ultEnvio:0, ultRecibo:null
+  dispositivo:null, yo:null, ultEnvio:0, ultRecibo:null,
+  pred:{},                     // id -> registro de predicación (cada uno es de una persona: quien)
+  predMes:{},                  // "2026-11|0" -> {cursos, mod}
+  predCfg:{metas:{}},          // "0" -> {min, mod}
+  tab:'cuentas'
 };
 let almacenamientoOk = true;
 
@@ -104,6 +109,9 @@ function cargar(){
   }catch(e){ almacenamientoOk = false; }
   if(!E.dispositivo) E.dispositivo = nuevoId();
   if(!E.config.topes || typeof E.config.topes!=='object') E.config.topes = {};
+  if(!E.pred || typeof E.pred!=='object') E.pred = {};
+  if(!E.predMes || typeof E.predMes!=='object') E.predMes = {};
+  if(!E.predCfg || typeof E.predCfg!=='object' || !E.predCfg.metas) E.predCfg = {metas:{}};
 }
 function guardar(){
   try{ localStorage.setItem(CLAVE, JSON.stringify(E)); return true; }
@@ -178,19 +186,23 @@ function render(){
   renderFijos();
   renderCats();
   renderLista(r.delMes);
+  renderPred();
 }
 
 function renderSinc(){
   const o = nombre(otro());
-  $('#sincTit').textContent = 'Juntar cuentas con '+o;
-  const lineas = [];
-  lineas.push(E.ultEnvio ? 'Enviaste tus cuentas <b>'+esc(textoHace(E.ultEnvio))+'</b>.' : 'Aún no envías tus cuentas.');
+  $('#sincTit').textContent = 'Juntar con '+o;
+  $('#btnEnviar').textContent = 'Enviar a '+o;
+  $('#btnRecibir').textContent = 'Recibir de '+o;
+  const lineas = ['Se envían juntas las cuentas y la predicación.'];
+  lineas.push(E.ultEnvio ? 'Enviaste tus datos <b>'+esc(textoHace(E.ultEnvio))+'</b>.' : 'Aún no envías tus datos.');
   if(E.ultRecibo){
-    lineas.push('Recibiste las de '+esc(E.ultRecibo.de||o)+' <b>'+esc(textoHace(E.ultRecibo.cuando))+'</b> (con datos hasta el '+esc(fechaCorta(E.ultRecibo.generado))+').');
-  } else lineas.push('Aún no recibes las cuentas de '+esc(o)+'.');
+    lineas.push('Recibiste los de '+esc(E.ultRecibo.de||o)+' <b>'+esc(textoHace(E.ultRecibo.cuando))+'</b> (con datos hasta el '+esc(fechaCorta(E.ultRecibo.generado))+').');
+  } else lineas.push('Aún no recibes los datos de '+esc(o)+'.');
   const d = haceDias(E.ultEnvio);
-  const atrasado = lista().length>0 && (d===null || d>=7);
-  if(atrasado) lineas.push('<span class="c-warn">Conviene enviarlas: también sirven de respaldo.</span>');
+  const hayDatos = lista().length>0 || Object.keys(E.pred).length>0;
+  const atrasado = hayDatos && (d===null || d>=7);
+  if(atrasado) lineas.push('<span class="c-warn">Conviene enviarlos: también sirven de respaldo.</span>');
   $('#sincEstado').innerHTML = lineas.map(l=>'<span>'+l+'</span>').join('');
   $('#sinc').classList.toggle('atrasado', atrasado);
 }
@@ -456,7 +468,8 @@ function nombreArchivo(){
 }
 function paquete(){
   return {app:APP, v:1, de:nombre(E.yo||0), quien:E.yo, dispositivo:E.dispositivo, generado:new Date().toISOString(),
-    config:E.config, movs:Object.values(E.movs)};
+    config:E.config, movs:Object.values(E.movs),
+    pred:Object.values(E.pred), predMes:E.predMes, predCfg:E.predCfg};
 }
 function descargar(texto, nombreA){
   const url = URL.createObjectURL(new Blob([texto],{type:'text/plain'}));
@@ -488,7 +501,7 @@ $('#btnEnviar').onclick = enviar;
 // ---------- Recibir ----------
 function abrirRecibir(){
   const o = nombre(otro());
-  $('#recTit').textContent = 'Recibir las cuentas de '+o;
+  $('#recTit').textContent = 'Recibir los datos de '+o;
   $('#recPasos').innerHTML =
     '<li>En WhatsApp, descarga el archivo que te mandó '+esc(o)+' (empieza con «cuentas-casa»).</li>'+
     '<li>Toca <b>Elegir archivo</b> y búscalo en <b>Descargas</b> o en la carpeta <b>WhatsApp Documents</b>.</li>'+
@@ -511,6 +524,13 @@ function limpiarTopes(t){
   const r = {};
   if(t && typeof t==='object') for(const c of CATS.gasto){ const v=Math.round(Number(t[c.id])); if(v>0 && isFinite(v)) r[c.id]=v; }
   return r;
+}
+function limpiarPred(v){
+  if(!v || typeof v!=='object' || typeof v.id!=='string' || !v.id || v.id.length>80) return null;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v.fecha)) return null;
+  const n = (x,max)=> Math.max(0, Math.min(max, Math.round(Number(x))||0));
+  return {id:v.id, quien:v.quien===1?1:0, fecha:v.fecha, mes:v.fecha.slice(0,7), min:n(v.min,1440), rev:n(v.rev,999),
+    nota:String(v.nota||'').slice(0,80), creado:Number(v.creado)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
 }
 function importarTexto(texto){
   let p;
@@ -537,6 +557,25 @@ function importarTexto(texto){
       mod: Number(c.mod)||0
     };
   }
+  let pNuevos=0, pCambios=0;
+  if(Array.isArray(p.pred)) for(const crudo of p.pred){
+    const v = limpiarPred(crudo); if(!v) continue;
+    const loc = E.pred[v.id];
+    if(!loc){ E.pred[v.id]=v; if(!v.borrado) pNuevos++; }
+    else if(v.mod > (loc.mod||0)){ E.pred[v.id]=v; pCambios++; }
+  }
+  if(p.predMes && typeof p.predMes==='object') for(const k of Object.keys(p.predMes)){
+    if(!/^\d{4}-\d{2}\|[01]$/.test(k)) continue;
+    const v = p.predMes[k] || {};
+    const cur = Math.max(0, Math.min(99, Math.round(Number(v.cursos))||0)), mod = Number(v.mod)||0;
+    if(!E.predMes[k] || mod > (E.predMes[k].mod||0)) E.predMes[k] = {cursos:cur, mod};
+  }
+  if(p.predCfg && p.predCfg.metas && typeof p.predCfg.metas==='object') for(const q of ['0','1']){
+    const v = p.predCfg.metas[q]; if(!v) continue;
+    const min = Math.max(0, Math.min(400*60, Math.round(Number(v.min))||0)), mod = Number(v.mod)||0;
+    const loc = E.predCfg.metas[q];
+    if(!loc || mod > (loc.mod||0)) E.predCfg.metas[q] = {min, mod};
+  }
   E.ultRecibo = {de:String(p.de||'').slice(0,20), generado:String(p.generado||''), cuando:ahora()};
   if(!guardar()) return false;
   pedirPersistencia();
@@ -545,7 +584,10 @@ function importarTexto(texto){
   if(nuevos) partes.push(nuevos+(nuevos===1?' nuevo':' nuevos'));
   if(cambiados) partes.push(cambiados+(cambiados===1?' corregido':' corregidos'));
   if(borrados) partes.push(borrados+(borrados===1?' borrado':' borrados'));
-  toast(partes.length ? 'Cuentas juntadas: '+partes.join(', ')+'.' : 'Ya estaban al día. No había nada nuevo.');
+  const msj = [];
+  if(partes.length) msj.push('Cuentas: '+partes.join(', '));
+  if(pNuevos || pCambios) msj.push('Predicación: '+[pNuevos?pNuevos+(pNuevos===1?' registro nuevo':' registros nuevos'):'', pCambios?pCambios+(pCambios===1?' cambio':' cambios'):''].filter(Boolean).join(', '));
+  toast(msj.length ? 'Datos juntados. '+msj.join('. ')+'.' : 'Ya estaban al día. No había nada nuevo.');
   return true;
 }
 
@@ -581,7 +623,7 @@ $('#formInicio').addEventListener('submit', e=>{
   if(iSel===null){ $('#iErr').textContent='Toca tu nombre para seguir.'; return; }
   const nombres = [$('#iN1').value.trim()||'Persona 1', $('#iN2').value.trim()||'Persona 2'];
   if(nombres.join('|')!==E.config.nombres.join('|')){ E.config.nombres = nombres; E.config.mod = ahora(); }
-  E.yo = iSel;
+  E.yo = iSel; verQuien = iSel;
   guardar(); pedirPersistencia();
   $('#veloInicio').hidden = true; render();
 });
@@ -620,10 +662,223 @@ $('#formAj').addEventListener('submit', e=>{
   }
   const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|') || JSON.stringify(topes)!==JSON.stringify(E.config.topes||{});
   if(cambio) E.config = {base, baseMes, nombres, topes, mod:ahora()};
-  E.yo = aYo;
+  E.yo = aYo; verQuien = aYo;
   if(!guardar()) return;
   $('#veloAj').hidden=true; toast('Ajustes guardados'); render();
 });
+
+// ---------- Predicación ----------
+let verQuien = null;
+const predDe = (q,m) => Object.values(E.pred).filter(x=>!x.borrado && x.quien===q && x.mes===m);
+function fmtMin(t){
+  t = Math.max(0, Math.round(t||0));
+  const h = Math.floor(t/60), mi = t%60;
+  if(!h) return mi+' min';
+  return h+' h'+(mi?' '+mi+' min':'');
+}
+const cursosDe = (q,m) => (E.predMes[m+'|'+q]||{}).cursos||0;
+const metaDe = q => (E.predCfg.metas[String(q)]||{}).min||0;
+function resumenPred(q,m){
+  const rs = predDe(q,m);
+  return {rs, min:rs.reduce((a,x)=>a+x.min,0), rev:rs.reduce((a,x)=>a+x.rev,0),
+    dias:new Set(rs.filter(x=>x.min>0||x.rev>0).map(x=>x.fecha)).size, cursos:cursosDe(q,m)};
+}
+function fechaCompleta(iso){
+  const [y,m,d] = iso.split('-').map(Number);
+  return DIAS_L[new Date(y,m-1,d).getDay()]+' '+d+' de '+MESES[m-1]+' de '+y;
+}
+function renderPred(){
+  if(verQuien===null) verQuien = E.yo===null ? 0 : E.yo;
+  const propio = verQuien===(E.yo===null?0:E.yo);
+  pintarSeg($('#pQuien'), [nombre(0), nombre(1)], verQuien, i=>{ verQuien=i; renderPred(); });
+  $('#pNotaQuien').textContent = propio ? '' : 'Estas son las horas de '+nombre(verQuien)+'. Las anota en su celular y llegan aquí al juntar datos.';
+  const r = resumenPred(verQuien, mes);
+  const mesN = MESES[Number(mes.split('-')[1])-1];
+  $('#pLbl').textContent = 'Horas de predicación en '+mesN;
+  $('#pHoras').textContent = fmtMin(r.min);
+  $('#pCursos').textContent = r.cursos;
+  $('#pRev').textContent = r.rev;
+  $('#pDias').textContent = r.dias;
+  $('#pCurMenos').disabled = !propio || r.cursos<=0;
+  $('#pCurMas').disabled = !propio;
+  $('#pMetaBtn').hidden = !propio;
+  $('#accPred').hidden = E.tab!=='pred' || !propio;
+  // Meta
+  const meta = metaDe(verQuien);
+  const anillo = $('#pAnillo');
+  let txt = '';
+  if(meta){
+    const pct = Math.min(1, r.min/meta);
+    const circ = 2*Math.PI*30;
+    $('#pArco').setAttribute('stroke-dasharray', (circ*pct).toFixed(1)+' '+circ.toFixed(1));
+    $('#pPct').textContent = Math.floor(r.min/meta*100)+'%';
+    anillo.removeAttribute('hidden');
+    const falta = meta - r.min;
+    const hoy = new Date(), act = ym(hoy);
+    if(falta<=0) txt = '<b class="c-in">Meta cumplida:</b> '+fmtMin(meta)+'.';
+    else if(mes===act){
+      const [y,mm] = mes.split('-').map(Number);
+      const quedan = new Date(y,mm,0).getDate() - hoy.getDate() + 1;
+      txt = 'Meta: '+fmtMin(meta)+'. Faltan <b>'+fmtMin(falta)+'</b> en '+quedan+(quedan===1?' día':' días')+' (unos '+fmtMin(Math.ceil(falta/quedan/5)*5)+' por día).';
+    } else if(mes<act) txt = 'Meta: '+fmtMin(meta)+'. Faltaron '+fmtMin(falta)+'.';
+    else txt = 'Meta: '+fmtMin(meta)+'.';
+  } else {
+    anillo.setAttribute('hidden','');
+    txt = propio ? 'Sin meta de horas. Puedes activarla abajo si la necesitas.' : '';
+  }
+  $('#pMetaTxt').innerHTML = txt;
+  // Lista
+  const box = $('#pLista');
+  if(!r.rs.length){
+    box.innerHTML = '<div class="vacio">'+(propio ? 'Aún no hay predicación anotada en '+esc(nombreMes(mes))+'.<br>Toca <b>+ Anotar predicación</b> al volver de salir.' : 'Aún no llegan registros de '+esc(nombre(verQuien))+' en '+esc(nombreMes(mes))+'.<br>Pídele que te envíe sus datos.')+'</div>';
+    return;
+  }
+  const orden = [...r.rs].sort((a,b)=> b.fecha.localeCompare(a.fecha) || (b.creado||0)-(a.creado||0));
+  const grupos = [];
+  for(const x of orden){ const l = grupos[grupos.length-1]; if(l && l.f===x.fecha) l.items.push(x); else grupos.push({f:x.fecha, items:[x]}); }
+  box.innerHTML = grupos.map(g=>'<div class="dia"><div class="dia-tit">'+esc(fechaLarga(g.f))+'</div>'+g.items.map(x=>{
+    const det = x.rev ? esc(x.rev+(x.rev===1?' revisita':' revisitas')) : '';
+    const tag = propio ? 'button' : 'div';
+    return '<'+tag+' class="mov"'+(propio?' data-pid="'+esc(x.id)+'"':'')+'><span class="dot pd"></span><span><div class="t">'+esc(x.nota || (x.min ? 'Predicación' : 'Solo revisitas'))+'</div>'+(det?'<div class="s">'+det+'</div>':'')+'</span><span class="m num" style="color:var(--pred)">'+esc(x.min?fmtMin(x.min):'')+'</span></'+tag+'>';
+  }).join('')+'</div>').join('');
+}
+$('#pLista').addEventListener('click', e=>{
+  const b = e.target.closest('[data-pid]'); if(!b) return;
+  const x = E.pred[b.dataset.pid]; if(x) abrirPred(x);
+});
+function cambiarCursos(d){
+  const q = E.yo===null?0:E.yo, k = mes+'|'+q;
+  const v = Math.max(0, Math.min(99, cursosDe(q,mes)+d));
+  E.predMes[k] = {cursos:v, mod:ahora()};
+  guardar(); renderPred();
+}
+$('#pCurMas').onclick = ()=>cambiarCursos(1);
+$('#pCurMenos').onclick = ()=>cambiarCursos(-1);
+
+// Formulario de predicación
+let pEdit = null, pRev = 0, pBorrar = false;
+function leerTiempo(){
+  const h = $('#pH').value.trim(), m = $('#pM').value.trim();
+  if((h && !/^\d{1,2}$/.test(h)) || (m && !/^\d{1,3}$/.test(m))) return NaN;
+  return (Number(h)||0)*60 + (Number(m)||0);
+}
+function pintarChipsT(){
+  const t = leerTiempo();
+  document.querySelectorAll('#pChips .chip').forEach(c=>c.setAttribute('aria-pressed', String(Number(c.dataset.min)===t)));
+}
+function ponerTiempo(t){ $('#pH').value = Math.floor(t/60) || ''; $('#pM').value = t%60 || ''; pintarChipsT(); }
+function pintarFechaTxt(){ const f=$('#pFecha').value; $('#pFechaTxt').textContent = /^\d{4}-\d{2}-\d{2}$/.test(f) ? fechaCompleta(f) : ''; }
+function pintarRev(){ $('#pRevN').textContent = pRev; $('#pRevMenos').disabled = pRev<=0; }
+function abrirPred(x){
+  pEdit = x || null; pBorrar = false;
+  $('#pFormTit').textContent = x ? 'Editar predicación' : 'Anotar predicación';
+  $('#pFecha').value = x ? x.fecha : (mes===ym(new Date()) ? hoyISO() : mes+'-01');
+  pintarFechaTxt();
+  ponerTiempo(x ? x.min : 0);
+  pRev = x ? x.rev : 0; pintarRev();
+  $('#pNota').value = x ? x.nota : '';
+  $('#pErr').textContent = '';
+  const el = $('#pEliminar'); el.hidden = !x; el.textContent = 'Eliminar';
+  $('#veloPred').hidden = false;
+}
+function cerrarPred(){ $('#veloPred').hidden = true; pEdit = null; }
+$('#addPred').onclick = ()=>abrirPred();
+$('#pCancelar').onclick = cerrarPred;
+$('#veloPred').addEventListener('click', e=>{ if(e.target.id==='veloPred') cerrarPred(); });
+$('#pFecha').addEventListener('input', pintarFechaTxt);
+$('#pFecha').addEventListener('change', pintarFechaTxt);
+$('#pChips').addEventListener('click', e=>{ const c=e.target.closest('[data-min]'); if(c) ponerTiempo(Number(c.dataset.min)); });
+$('#pH').addEventListener('input', pintarChipsT);
+$('#pM').addEventListener('input', pintarChipsT);
+$('#pRevMas').onclick = ()=>{ if(pRev<999){ pRev++; pintarRev(); } };
+$('#pRevMenos').onclick = ()=>{ if(pRev>0){ pRev--; pintarRev(); } };
+$('#formPred').addEventListener('submit', e=>{
+  e.preventDefault();
+  const fecha = $('#pFecha').value, t = leerTiempo();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){ $('#pErr').textContent='Elige la fecha.'; return; }
+  if(isNaN(t)){ $('#pErr').textContent='Escribe las horas y los minutos solo con números.'; return; }
+  if(t>1440){ $('#pErr').textContent='Un día tiene como máximo 24 horas.'; return; }
+  if(t<=0 && pRev<=0){ $('#pErr').textContent='Escribe el tiempo o anota al menos una revisita.'; return; }
+  const id = pEdit ? pEdit.id : nuevoId();
+  E.pred[id] = {id, quien:(E.yo===null?0:E.yo), fecha, mes:fecha.slice(0,7), min:t, rev:pRev, nota:$('#pNota').value.trim().slice(0,80),
+    creado: pEdit ? pEdit.creado : ahora(), mod:ahora(), borrado:false};
+  const eraNuevo = !pEdit;
+  if(!guardar()) return;
+  pedirPersistencia();
+  mes = fecha.slice(0,7);
+  cerrarPred(); render();
+  toast(eraNuevo ? (t ? fmtMin(t)+' anotado' : 'Revisitas anotadas') : 'Cambios guardados');
+});
+$('#pEliminar').onclick = ()=>{
+  if(!pEdit) return;
+  if(!pBorrar){ pBorrar = true; $('#pEliminar').textContent = 'Toca otra vez para eliminar'; return; }
+  const x = E.pred[pEdit.id]; if(x){ x.borrado = true; x.mod = ahora(); guardar(); }
+  cerrarPred(); render(); toast('Registro eliminado');
+};
+
+// Informe
+function textoInforme(q,m){
+  const r = resumenPred(q,m);
+  const nm = nombreMes(m);
+  return ['Informe de predicación', nombre(q)+' · '+nm.charAt(0).toUpperCase()+nm.slice(1), '',
+    'Horas: '+fmtMin(r.min), 'Cursos bíblicos: '+r.cursos, 'Revisitas: '+r.rev].join('\n');
+}
+$('#pInforme').onclick = ()=>{ $('#iTexto').value = textoInforme(verQuien, mes); $('#veloInforme').hidden = false; };
+$('#iCerrar').onclick = ()=>$('#veloInforme').hidden = true;
+$('#veloInforme').addEventListener('click', e=>{ if(e.target.id==='veloInforme') $('#veloInforme').hidden = true; });
+async function copiar(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(e){ try{ const a=$('#iTexto'); a.focus(); a.select(); return document.execCommand('copy'); }catch(e2){ return false; } }
+}
+$('#iCopiar').onclick = async ()=>{ toast(await copiar($('#iTexto').value) ? 'Informe copiado. Pégalo donde lo envías.' : 'No se pudo copiar. Mantén presionado el texto para copiarlo.'); };
+$('#iEnviar').onclick = async ()=>{
+  const t = $('#iTexto').value;
+  try{
+    if(navigator.share){ await navigator.share({text:t}); return; }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  location.href = 'https://wa.me/?text='+encodeURIComponent(t);
+};
+
+// Meta
+$('#pMetaBtn').onclick = ()=>{
+  const q = E.yo===null?0:E.yo, m = metaDe(q);
+  $('#mTit').textContent = 'Meta de horas de '+nombre(q);
+  $('#mHoras').value = m ? String(Math.round(m/60)) : '';
+  $('#mErr').textContent = '';
+  $('#veloMeta').hidden = false;
+};
+$('#mRapidas').addEventListener('click', e=>{ const c=e.target.closest('[data-h]'); if(c) $('#mHoras').value = c.dataset.h; });
+$('#mCancelar').onclick = ()=>$('#veloMeta').hidden = true;
+$('#veloMeta').addEventListener('click', e=>{ if(e.target.id==='veloMeta') $('#veloMeta').hidden = true; });
+function guardarMeta(min){
+  E.predCfg.metas[String(E.yo===null?0:E.yo)] = {min, mod:ahora()};
+  guardar(); $('#veloMeta').hidden = true; renderPred();
+  toast(min ? 'Meta guardada: '+fmtMin(min)+' al mes' : 'Meta quitada');
+}
+$('#mQuitar').onclick = ()=>guardarMeta(0);
+$('#formMeta').addEventListener('submit', e=>{
+  e.preventDefault();
+  const v = $('#mHoras').value.trim();
+  if(!v){ guardarMeta(0); return; }
+  if(!/^\d{1,3}$/.test(v) || Number(v)<1 || Number(v)>400){ $('#mErr').textContent='Escribe las horas como número entero, por ejemplo 30.'; return; }
+  guardarMeta(Number(v)*60);
+});
+
+// Pestañas
+function aplicarTab(){
+  const p = E.tab==='pred';
+  $('#tabCuentas').hidden = p; $('#tabPred').hidden = !p;
+  $('#accCuentas').hidden = p;
+  $('#btnBuscar').hidden = p;
+  $('#tabBtnC').setAttribute('aria-selected', String(!p));
+  $('#tabBtnP').setAttribute('aria-selected', String(p));
+  $('#titulo').textContent = p ? 'Predicación' : 'Cuentas de la casa';
+  if(p) $('#slotSincP').appendChild($('#sinc')); else $('#tabCuentas').insertBefore($('#sinc'), $('#fijos'));
+  renderPred();
+}
+function setTab(t){ E.tab = t; guardar(); aplicarTab(); window.scrollTo(0,0); }
+$('#tabBtnC').onclick = ()=>setTab('cuentas');
+$('#tabBtnP').onclick = ()=>setTab('pred');
 
 // ---------- Buscar ----------
 function sinTildes(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
@@ -679,6 +934,7 @@ if('serviceWorker' in navigator){
 cargar();
 if(!almacenamientoOk) aviso('Este navegador no deja guardar datos. Abre la app en Chrome, fuera del modo incógnito.', true);
 render();
+aplicarTab();
 if(E.yo===null) abrirInicio();
 revisarCompartido();
 })();
