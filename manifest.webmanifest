@@ -1,0 +1,25 @@
+{
+  "name": "Cuentas de la casa",
+  "short_name": "Cuentas",
+  "description": "Gastos e ingresos de la casa, entre dos celulares",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F5F7",
+  "theme_color": "#0F6E8C",
+  "icons": [
+    {"src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ],
+  "share_target": {
+    "action": "./recibir",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [{"name": "archivo", "accept": ["text/plain", ".txt", "application/json", ".json"]}]
+    }
+  }
+}

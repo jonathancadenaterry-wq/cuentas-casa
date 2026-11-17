@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F6E8C">
+<meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
+<title>Cuentas de la casa</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icono-192.png">
+<link rel="apple-touch-icon" href="icono-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+/* Layout: una sola columna para celular — mes, resumen, fijos, categorías, lista; acciones fijas abajo */
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --ink:#14212B; --muted:#5B6976; --line:#DCE3E8;
+  --accent:#0F6E8C; --accent-soft:#E1EFF4; --in:#1C8048; --out:#BF3B27; --warn:#9A6512;
+  --font-display:'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body:'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D151B; --surface:#15212A; --ink:#E5ECF1; --muted:#93A3B0; --line:#25333E;
+    --accent:#52B5D3; --accent-soft:#16343F; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D151B; --surface:#15212A; --ink:#E5ECF1; --muted:#93A3B0; --line:#25333E;
+  --accent:#52B5D3; --accent-soft:#16343F; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+
+#app{max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 110px);display:flex;flex-direction:column;gap:14px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.top h1{font-family:var(--font-display);font-size:1.35rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted)}
+.sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.sync.ok::before{background:var(--in)}
+.sync.bad::before{background:var(--out)}
+.icon-btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;width:44px;height:44px;display:grid;place-items:center;flex:none}
+.icon-btn svg{width:22px;height:22px;stroke:var(--ink)}
+
+.mes{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mes h2{font-family:var(--font-display);font-size:1.15rem;margin:0;text-transform:capitalize}
+.mes .hoy{font-size:.8rem;color:var(--accent);background:none;border:none;padding:4px 6px;font-weight:600}
+
+.resumen{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.meta-lbl{font-size:.85rem;color:var(--muted);font-weight:600}
+.meta{font-family:var(--font-display);font-size:2.4rem;line-height:1.05;letter-spacing:-.02em}
+.meta.neg{color:var(--out)}
+.meta-nota{font-size:.85rem;color:var(--muted);margin-top:4px}
+.hoy-box{display:flex;justify-content:space-between;align-items:baseline;background:var(--accent-soft);border-radius:12px;padding:10px 12px}
+.hoy-box b{font-size:1.15rem}
+.lineas{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:.92rem}
+.lineas dt{color:var(--muted)}
+.lineas dd{margin:0;text-align:right;font-weight:600}
+.lineas .sep{grid-column:1/-1;border-top:1px dashed var(--line);margin:2px 0}
+.c-in{color:var(--in)} .c-out{color:var(--out)} .c-warn{color:var(--warn)}
+
+.aviso{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;font-size:.92rem}
+.aviso.err{border-left-color:var(--out)}
+.btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;background:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn{color:#06232C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn{color:#06232C}}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--out);border:1px solid var(--out)}
+.btn:disabled{opacity:.55}
+
+.bloque{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.bloque h3{margin:0;font-size:1rem;font-family:var(--font-display)}
+.cat-row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:.88rem}
+.cat-row .bar{grid-column:1/-1;height:8px;border-radius:6px;background:var(--line);overflow:hidden;display:flex}
+.cat-row .bar i{display:block;height:100%}
+.cat-row .bar i.prev{opacity:.38}
+.leyenda{font-size:.78rem;color:var(--muted)}
+
+.dia{display:flex;flex-direction:column;gap:6px}
+.dia-tit{font-size:.8rem;color:var(--muted);font-weight:700;padding:0 4px}
+.dia-tit::first-letter{text-transform:uppercase}
+.mov{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:left;width:100%}
+.mov .dot{width:12px;height:12px;border-radius:50%}
+.mov .t{font-weight:600;overflow-wrap:anywhere}
+.mov .s{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.mov .m{font-weight:700;white-space:nowrap}
+.pill{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--line);color:var(--ink)}
+.pill.prev{background:transparent;border:1px dashed var(--warn);color:var(--warn)}
+.mov.previsto{border-style:dashed}
+.mov-wrap{display:flex;flex-direction:column;gap:6px}
+.marcar{align-self:flex-end;font-size:.8rem;font-weight:700;color:var(--accent);background:none;border:none;padding:2px 6px}
+.vacio{color:var(--muted);text-align:center;padding:24px 12px;font-size:.95rem}
+
+.acciones{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);background:linear-gradient(to top,var(--bg) 70%,transparent);display:flex;justify-content:center}
+.acciones .in{max-width:560px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acciones button{border:none;border-radius:16px;padding:16px;font-weight:700;font-size:1.05rem;color:#fff}
+.acciones .g{background:var(--out)} .acciones .i{background:var(--in)}
+:root[data-theme="dark"] .acciones button{color:#0D151B}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .acciones button{color:#0D151B}}
+.acciones button:disabled{opacity:.5}
+
+.velo{position:fixed;inset:0;background:rgba(5,12,16,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.velo[hidden]{display:none}
+.hoja{background:var(--surface);width:100%;max-width:560px;max-height:92%;overflow-y:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:14px}
+.hoja h3{margin:0;font-family:var(--font-display);font-size:1.2rem}
+.campo{display:flex;flex-direction:column;gap:6px}
+.campo>label,.campo>.lbl{font-size:.85rem;font-weight:700;color:var(--muted)}
+.campo input[type=text],.campo input[type=date],.campo input[type=month]{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;min-height:48px}
+#fMonto{font-size:1.8rem;font-weight:700;font-variant-numeric:tabular-nums}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{border:none;background:transparent;padding:11px 8px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+:root[data-theme="dark"] .seg button[aria-pressed="true"]{color:#06232C}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{color:#06232C}}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:8px 12px;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.chip i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.check{display:flex;gap:10px;align-items:center;font-size:.95rem}
+.check input{width:22px;height:22px;accent-color:var(--accent)}
+.botones{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.error{color:var(--out);font-size:.88rem;min-height:1.2em}
+.ayuda{font-size:.82rem;color:var(--muted);margin:0}
+
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 96px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-size:.9rem;font-weight:600;z-index:30;max-width:90%;text-align:center}
+#toast[hidden]{display:none}
+@media (prefers-reduced-motion: no-preference){.hoja{animation:sube .18s ease-out}@keyframes sube{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}}
+
+.sinc{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.sinc.atrasado{border-left:4px solid var(--warn)}
+.sinc h3{margin:0;font-family:var(--font-display);font-size:1rem}
+.sinc .st{font-size:.86rem;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.sinc .st b{color:var(--ink);font-weight:600}
+.sinc .botones .btn{padding:12px 10px}
+.instalar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent-soft);border-radius:14px;padding:10px 12px;font-size:.9rem}
+.instalar[hidden]{display:none}
+.pasos{margin:0;padding-left:20px;font-size:.92rem;display:flex;flex-direction:column;gap:6px}
+.quien-ini{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.quien-ini button{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:18px 10px;font-weight:700;font-size:1.05rem}
+.quien-ini button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div>
+      <h1>Cuentas de la casa</h1>
+      <span id="soy" class="sync ok">—</span>
+    </div>
+    <button class="icon-btn" id="btnAjustes" aria-label="Ajustes">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <div class="instalar" id="bannerInstalar" hidden>
+    <span>Instálala para abrirla como una app, incluso sin internet.</span>
+    <button class="btn" id="btnInstalar">Instalar</button>
+  </div>
+
+  <div id="estado"></div>
+
+  <nav class="mes" aria-label="Mes">
+    <button class="icon-btn" id="prev" aria-label="Mes anterior"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div style="text-align:center">
+      <h2 id="mesTitulo">—</h2>
+      <button class="hoy" id="irHoy" hidden>Volver a este mes</button>
+    </div>
+    <button class="icon-btn" id="next" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  </nav>
+
+  <section class="resumen" aria-label="Resumen del mes">
+    <div>
+      <div class="meta-lbl">Deberíamos tener a fin de mes</div>
+      <div class="meta num" id="vFin">$0,00</div>
+      <div class="meta-nota" id="vFinNota">Incluye lo que falta cobrar y pagar este mes.</div>
+    </div>
+    <div class="hoy-box"><span>Hoy tenemos</span><b class="num" id="vHoy">$0,00</b></div>
+    <dl class="lineas num">
+      <dt>Empezamos el mes con</dt><dd id="vIni">$0,00</dd>
+      <dt>Entró</dt><dd class="c-in" id="vIng">$0,00</dd>
+      <dt>Salió</dt><dd class="c-out" id="vGas">$0,00</dd>
+      <div class="sep"></div>
+      <dt>Falta cobrar (previsto)</dt><dd class="c-in" id="vIngP">$0,00</dd>
+      <dt>Falta pagar (previsto)</dt><dd class="c-out" id="vGasP">$0,00</dd>
+    </dl>
+  </section>
+
+  <section class="sinc" id="sinc" aria-label="Juntar cuentas">
+    <h3 id="sincTit">Juntar cuentas</h3>
+    <div class="st" id="sincEstado"></div>
+    <div class="botones">
+      <button class="btn" id="btnEnviar">Enviar mis cuentas</button>
+      <button class="btn ghost" id="btnRecibir">Recibir cuentas</button>
+    </div>
+  </section>
+
+  <div id="fijos"></div>
+
+  <section class="bloque" id="bloqueCats" hidden>
+    <h3>¿En qué se fue la plata?</h3>
+    <div id="cats" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div class="leyenda">Parte clara: gastos previstos que aún no se pagan.</div>
+  </section>
+
+  <section id="lista" style="display:flex;flex-direction:column;gap:14px" aria-label="Movimientos"></section>
+</div>
+
+<div class="acciones"><div class="in">
+  <button class="g" id="addGasto">− Gasto</button>
+  <button class="i" id="addIngreso">+ Ingreso</button>
+</div></div>
+
+<input type="file" id="archivo" accept=".txt,.json,text/plain,application/json" hidden>
+
+<!-- Primer uso -->
+<div class="velo" id="veloInicio" hidden>
+  <form class="hoja" id="formInicio" autocomplete="off">
+    <h3>¿Quién usa este celular?</h3>
+    <p class="ayuda">Así cada gasto queda con el nombre de quien lo anotó. Pueden corregir los nombres.</p>
+    <div class="campo"><label for="iN1">Nombre 1</label><input type="text" id="iN1" maxlength="20"></div>
+    <div class="campo"><label for="iN2">Nombre 2</label><input type="text" id="iN2" maxlength="20"></div>
+    <div class="quien-ini" id="iQuien">
+      <button type="button" data-i="0" aria-pressed="false">—</button>
+      <button type="button" data-i="1" aria-pressed="false">—</button>
+    </div>
+    <div class="error" id="iErr" role="alert"></div>
+    <button type="submit" class="btn">Empezar</button>
+  </form>
+</div>
+
+<!-- Formulario de movimiento -->
+<div class="velo" id="veloMov" hidden>
+  <form class="hoja" id="formMov" autocomplete="off">
+    <h3 id="formTit">Nuevo gasto</h3>
+    <div class="seg" role="group" aria-label="Tipo">
+      <button type="button" id="tGasto" aria-pressed="true">Gasto</button>
+      <button type="button" id="tIngreso" aria-pressed="false">Ingreso</button>
+    </div>
+    <div class="campo">
+      <label for="fMonto">Monto en dólares</label>
+      <input type="text" id="fMonto" inputmode="decimal" placeholder="0,00">
+    </div>
+    <div class="campo">
+      <span class="lbl">Categoría</span>
+      <div class="chips" id="fCats"></div>
+    </div>
+    <div class="campo">
+      <label for="fNota">Detalle (opcional)</label>
+      <input type="text" id="fNota" maxlength="80" placeholder="Ej.: planilla de luz">
+    </div>
+    <div class="campo">
+      <label for="fFecha">Fecha</label>
+      <input type="date" id="fFecha">
+    </div>
+    <div class="campo">
+      <span class="lbl">¿Ya se hizo?</span>
+      <div class="seg" role="group" aria-label="Estado">
+        <button type="button" id="eHecho" aria-pressed="true">Sí, ya</button>
+        <button type="button" id="ePrev" aria-pressed="false">No, falta pagar</button>
+      </div>
+    </div>
+    <div class="campo">
+      <span class="lbl">Lo registra</span>
+      <div class="seg" role="group" aria-label="Quién" id="fQuien"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="fFijo"> Se repite cada mes (luz, agua, sueldo…)</label>
+    <div class="error" id="fErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="fCancelar">Cancelar</button>
+      <button type="submit" class="btn" id="fGuardar">Guardar</button>
+    </div>
+    <button type="button" class="btn danger" id="fEliminar" hidden>Eliminar</button>
+  </form>
+</div>
+
+<!-- Recibir -->
+<div class="velo" id="veloRecibir" hidden>
+  <div class="hoja">
+    <h3 id="recTit">Recibir cuentas</h3>
+    <ol class="pasos" id="recPasos"></ol>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="recCancelar">Cancelar</button>
+      <button type="button" class="btn" id="recElegir">Elegir archivo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ajustes -->
+<div class="velo" id="veloAj" hidden>
+  <form class="hoja" id="formAj" autocomplete="off">
+    <h3>Ajustes</h3>
+    <div class="campo">
+      <label for="aBase">Dinero con el que empezamos</label>
+      <input type="text" id="aBase" inputmode="decimal" placeholder="0,00">
+      <p class="ayuda">Lo que tenían juntos al empezar a usar la app. Desde ahí, cada mes arranca con lo que quedó del anterior. Basta con ponerlo en un solo celular: viaja al otro al juntar cuentas.</p>
+    </div>
+    <div class="campo">
+      <label for="aMes">¿Desde qué mes?</label>
+      <input type="month" id="aMes">
+    </div>
+    <div class="campo"><label for="aN1">Nombre 1</label><input type="text" id="aN1" maxlength="20"></div>
+    <div class="campo"><label for="aN2">Nombre 2</label><input type="text" id="aN2" maxlength="20"></div>
+    <div class="campo">
+      <span class="lbl">En este celular registra</span>
+      <div class="seg" role="group" aria-label="Quién usa este celular" id="aYo"></div>
+    </div>
+    <div class="error" id="aErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="aCancelar">Cancelar</button>
+      <button type="submit" class="btn" id="aGuardar">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
