@@ -9,7 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => (c<0 ? '−' : '')+fmt.format(Math.abs(c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '9';
+const VERSION_APP = '10';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -102,6 +102,7 @@ let E = {
   predMes:{},                  // "2026-11|0" -> {cursos, mod}
   predCfg:{metas:{}},          // "0" -> {min, mod}
   cursos:{},                   // id -> curso bíblico (de una persona: quien)
+  fijos:{},                    // id -> gasto fijo del mes (luz, agua…); cada pago queda ligado con fijoId
   tab:'cuentas'
 };
 let almacenamientoOk = true;
@@ -117,7 +118,22 @@ function cargar(){
   if(!E.predMes || typeof E.predMes!=='object') E.predMes = {};
   if(!E.predCfg || typeof E.predCfg!=='object' || !E.predCfg.metas) E.predCfg = {metas:{}};
   if(!E.cursos || typeof E.cursos!=='object') E.cursos = {};
+  if(!E.fijos || typeof E.fijos!=='object') E.fijos = {};
+  // Personalización de la casa (una sola vez): gastos fijos y tope de comida.
+  // Con fecha de cambio muy antigua, para que cualquier ajuste hecho en un celular gane al juntar datos.
+  if(!E.preset10){
+    PRESET_FIJOS.forEach(([id,nombre,cat,varios],i)=>{
+      if(!E.fijos[id]) E.fijos[id] = {id, nombre, cat, monto:0, dia:0, varios, orden:i+1, mod:1, borrado:false};
+    });
+    if(!E.config.topes.comida) E.config.topes.comida = 14000;
+    E.preset10 = true;
+  }
 }
+const PRESET_FIJOS = [
+  ['luz','Luz','servicios',false], ['agua','Agua','servicios',false], ['internet','Internet','servicios',false],
+  ['arriendo-casa','Arriendo casa','casa',false], ['arriendo-local','Arriendo local de trabajo','trabajo',false],
+  ['transporte','Transporte (taxi / moto)','transporte',true], ['banco','Pago al banco','deudas',false]
+];
 function guardar(){
   try{ localStorage.setItem(CLAVE, JSON.stringify(E)); return true; }
   catch(e){ almacenamientoOk = false; aviso('No se pudo guardar en este celular. Revisa que haya espacio libre.', true); return false; }
@@ -141,8 +157,37 @@ function limpiarMov(v){
     fecha: fecha || '2000-01-01', mes: (fecha||'2000-01-01').slice(0,7),
     estado: v.estado==='previsto' ? 'previsto' : 'hecho',
     quien: v.quien===1 ? 1 : 0, fijo: !!v.fijo, de: v.de ? String(v.de).slice(0,80) : null,
+    fijoId: v.fijoId ? String(v.fijoId).slice(0,80) : null,
     creado: Number(v.creado)||0, mod: Number(v.mod)||0, borrado: !!v.borrado
   };
+}
+
+// ---------- Gastos fijos ----------
+const fijosActivos = () => Object.values(E.fijos).filter(f=>!f.borrado).sort((a,b)=>(a.orden||0)-(b.orden||0));
+const pagosFijo = (id, m) => lista().filter(x=>x.tipo==='gasto' && x.fijoId===id && x.mes===m);
+function estadoFijo(f, m){
+  const ps = pagosFijo(f.id, m), hechos = ps.filter(x=>x.estado!=='previsto'), prev = ps.filter(x=>x.estado==='previsto');
+  const pagado = hechos.reduce((a,x)=>a+x.monto,0);
+  let falta = 0;
+  if(f.monto>0){
+    if(f.varios) falta = Math.max(0, f.monto - pagado - prev.reduce((a,x)=>a+x.monto,0));
+    else if(!hechos.length && !prev.length) falta = f.monto;
+  }
+  return {hechos, pagado, listo: f.varios ? false : hechos.length>0, falta};
+}
+const STOP_FIJO = new Set('de del la el al los las y o a en por para pago pagos gasto gastos mes cada'.split(' '));
+const palabrasFijo = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9ñ]+/).filter(w=>w.length>1 && !STOP_FIJO.has(w));
+// Busca a qué gasto fijo corresponde un gasto (por su categoría y las palabras del detalle)
+function buscarFijo(nota, cat){
+  const ws = new Set(palabrasFijo(nota));
+  if(!ws.size) return null;
+  let mejor = null, pts = 0;
+  for(const f of fijosActivos()){
+    if(f.cat!==cat) continue;
+    const p = palabrasFijo(f.nombre).filter(w=>ws.has(w)).length;
+    if(p > pts){ pts = p; mejor = f; }
+  }
+  return mejor;
 }
 
 // ---------- Cálculos ----------
@@ -163,8 +208,12 @@ function calc(m){
     ini = bm ? (E.config.base||0) : 0;
     for(const x of todos){ if(x.estado!=='previsto' && x.mes>=(bm||'') && x.mes<m) ini += signo(x); }
   }
+  // Gastos fijos con monto que aún no se pagan: cuentan como "falta pagar" en el mes actual y los siguientes
+  let fijP = 0;
+  if(m >= ym(new Date())) for(const f of fijosActivos()) fijP += estadoFijo(f, m).falta;
+  gasP += fijP;
   const hoy = ini + ingH - gasH;
-  return {ini,ingH,gasH,ingP,gasP,hoy,fin:hoy+ingP-gasP,delMes,antesDeBase};
+  return {ini,ingH,gasH,ingP,gasP,fijP,hoy,fin:hoy+ingP-gasP,delMes,antesDeBase};
 }
 
 // ---------- Render ----------
@@ -216,34 +265,122 @@ function renderSinc(){
   $('#recSincTxt').textContent = d===null ? 'Aún no envías tus datos a '+o+'.' : 'Hace '+d+' días que no envías tus datos a '+o+'.';
 }
 
-function idFijo(x, m){ return 'fijo-'+(x.de||x.id)+'-'+m; }
-function candidatosFijos(){
-  const ant = addMes(mes,-1);
-  return lista().filter(x=>x.mes===ant && x.fijo && !E.movs[idFijo(x,mes)]);
-}
 function renderFijos(){
   const box = $('#fijos');
-  const c = candidatosFijos();
-  if(!c.length){ box.innerHTML=''; return; }
-  const mAnt = MESES[Number(addMes(mes,-1).split('-')[1])-1];
-  const mAct = MESES[Number(mes.split('-')[1])-1];
-  box.innerHTML = '<div class="aviso"><div>En '+mAnt+' hubo <b>'+c.length+'</b> '+(c.length===1?'movimiento que se repite':'movimientos que se repiten')+' cada mes ('+esc(c.slice(0,3).map(x=>x.nota||catInfo(x.tipo,x.cat).n).join(', '))+(c.length>3?'…':'')+').</div><button class="btn" id="traerFijos">Agregarlos a '+mAct+' como previstos</button></div>';
-  $('#traerFijos').onclick = traerFijos;
+  const fs = fijosActivos();
+  if(!fs.length){ box.hidden = true; return; }
+  box.hidden = false;
+  const abierta = box.open;
+  const mesN = MESES[Number(mes.split('-')[1])-1];
+  const est = fs.map(f=>({f, e:estadoFijo(f, mes)}));
+  const unicos = est.filter(x=>!x.f.varios), listos = unicos.filter(x=>x.e.listo).length;
+  const faltan = unicos.filter(x=>!x.e.listo);
+  const totFalta = est.reduce((a,x)=>a+x.e.falta,0);
+  const futuro = mes > ym(new Date()), pasado = mes < ym(new Date());
+  let falta = '';
+  if(!faltan.length) falta = 'Todos los gastos fijos de '+mesN+' están pagados.';
+  else falta = (pasado ? 'Quedaron sin anotar: ' : 'Faltan: ')+esc(faltan.map(x=>x.f.nombre).join(', '))+(totFalta ? ' · <b>'+money(totFalta)+'</b>' : '')+'.';
+  box.innerHTML = '<summary><div class="fc-top"><h3>Gastos fijos de '+esc(mesN)+'</h3><span class="fc-cuenta">'+listos+' de '+unicos.length+' pagados <svg class="flecha" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></span></div>'+
+    '<div class="fc-prog"><i style="width:'+(unicos.length ? listos/unicos.length*100 : 0)+'%"></i></div>'+
+    '<div class="fc-falta">'+falta+'</div></summary>'+
+    '<div class="fc-lista">'+est.map(({f,e})=>{
+      const det = [f.dia ? 'día '+f.dia : '', f.monto ? (f.varios ? 'aprox. '+money(f.monto)+' al mes' : 'aprox. '+money(f.monto)) : ''].filter(Boolean).join(' · ') || (f.varios ? 'Anota cada pago' : 'Sin monto aproximado');
+      let der;
+      if(f.varios) der = (e.pagado ? money(e.pagado)+'<small>+ anotar</small>' : '<small>+ anotar</small>');
+      else if(e.listo) der = money(e.pagado);
+      else der = '<small>'+(futuro?'Previsto':'Pagar')+'</small>';
+      return '<button type="button" class="fc-fila'+(e.listo?' pagado':'')+(f.varios?' varios':'')+'" data-fijo="'+esc(f.id)+'"><span class="fc-chk">'+(e.listo?'✓':'')+'</span><span><div class="fc-n">'+esc(f.nombre)+'</div><div class="fc-s">'+esc(det)+'</div></span><span class="fc-m">'+der+'</span></button>';
+    }).join('')+'<button type="button" class="link-base" id="fcEditar">Editar la lista de gastos fijos</button></div>';
+  box.open = abierta;
+  $('#fcEditar').onclick = abrirEditorFijos;
 }
-function traerFijos(){
-  const [y,m] = mes.split('-').map(Number);
-  const diasMes = new Date(y,m,0).getDate();
-  let n=0;
-  for(const x of candidatosFijos()){
-    const dia = Math.min(Number(x.fecha.slice(8,10))||1, diasMes);
-    const id = idFijo(x,mes);   // mismo id en los dos celulares: al juntar cuentas no se duplica
-    E.movs[id] = {id, tipo:x.tipo, monto:x.monto, cat:x.cat, nota:x.nota, fecha:mes+'-'+pad(dia), mes,
-      estado:'previsto', quien:x.quien, fijo:true, de:x.de||x.id, creado:ahora(), mod:ahora(), borrado:false};
-    n++;
+$('#fijos').addEventListener('click', e=>{
+  const b = e.target.closest('[data-fijo]'); if(!b) return;
+  const f = E.fijos[b.dataset.fijo]; if(!f) return;
+  const est = estadoFijo(f, mes);
+  if(!f.varios && est.listo){ const x = est.hechos[est.hechos.length-1]; abrirForm('gasto', x); return; }
+  abrirPagoFijo(f);
+});
+function abrirPagoFijo(f){
+  abrirForm('gasto');
+  fFijoId = f.id;
+  fCat = f.cat; pintarCats();
+  $('#fNota').value = f.nombre;
+  $('#fMonto').value = f.monto && !f.varios ? montoTexto(f.monto) : '';
+  $('#formTit').textContent = 'Pagar: '+f.nombre;
+  mostrarTotal();
+}
+
+// ---------- Editor de gastos fijos ----------
+let fxFilas = [];
+function abrirEditorFijos(){
+  fxFilas = fijosActivos().map(f=>({...f, quitar:false}));
+  pintarEditorFijos();
+  $('#fxErr').textContent = '';
+  $('#veloFijos').hidden = false;
+}
+function pintarEditorFijos(){
+  const opts = sel => CATS.gasto.map(c=>'<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+esc(c.n)+'</option>').join('');
+  $('#fxLista').innerHTML = fxFilas.map((f,i)=>'<div class="fx'+(f.quitar?' quitado':'')+'" data-i="'+i+'">'+
+    '<label class="full">Nombre<input type="text" data-k="nombre" maxlength="40" value="'+esc(f.nombre)+'"></label>'+
+    '<label>Monto aprox. (opcional)<input type="text" inputmode="decimal" data-k="monto" placeholder="Sin monto" value="'+(f.monto?montoTexto(f.monto):'')+'"></label>'+
+    '<label>Día de pago (opcional)<input type="text" inputmode="numeric" data-k="dia" placeholder="—" value="'+(f.dia||'')+'"></label>'+
+    '<label class="full">Categoría<select data-k="cat">'+opts(f.cat)+'</select></label>'+
+    '<div class="fx-pie"><label class="check" style="font-size:.88rem;color:var(--ink);flex-direction:row"><input type="checkbox" data-k="varios"'+(f.varios?' checked':'')+'> Varios pagos al mes</label>'+
+    '<button type="button" class="fx-quitar" data-quitar="'+i+'">'+(f.quitar?'Deshacer':'Quitar')+'</button></div></div>').join('');
+}
+function leerEditorFijos(){
+  document.querySelectorAll('#fxLista .fx').forEach(el=>{
+    const f = fxFilas[Number(el.dataset.i)];
+    f.nombreTxt = el.querySelector('[data-k=nombre]').value.trim();
+    f.montoTxt = el.querySelector('[data-k=monto]').value.trim();
+    f.diaTxt = el.querySelector('[data-k=dia]').value.trim();
+    f.cat = el.querySelector('[data-k=cat]').value;
+    f.varios = el.querySelector('[data-k=varios]').checked;
+  });
+}
+$('#fxLista').addEventListener('click', e=>{
+  const b = e.target.closest('[data-quitar]'); if(!b) return;
+  leerEditorFijos();
+  const f = fxFilas[Number(b.dataset.quitar)];
+  f.nombre = f.nombreTxt; f.quitar = !f.quitar;
+  if(f.nuevo && f.quitar) fxFilas.splice(Number(b.dataset.quitar),1);
+  fxFilas.forEach(x=>{ x.nombre = x.nombreTxt; x.monto = parseMonto(x.montoTxt)||0; x.dia = Number(x.diaTxt)||0; });
+  pintarEditorFijos();
+});
+$('#fxAgregar').onclick = ()=>{
+  leerEditorFijos();
+  fxFilas.forEach(x=>{ x.nombre = x.nombreTxt; x.monto = parseMonto(x.montoTxt)||0; x.dia = Number(x.diaTxt)||0; });
+  fxFilas.push({id:nuevoId(), nombre:'', cat:'otros', monto:0, dia:0, varios:false, orden:0, nuevo:true, quitar:false});
+  pintarEditorFijos();
+  const ins = document.querySelectorAll('#fxLista [data-k=nombre]'); if(ins.length) ins[ins.length-1].focus();
+};
+$('#fxCancelar').onclick = ()=>$('#veloFijos').hidden = true;
+$('#veloFijos').addEventListener('click', e=>{ if(e.target.id==='veloFijos') $('#veloFijos').hidden = true; });
+$('#fxGuardar').onclick = ()=>{
+  leerEditorFijos();
+  const t = ahora();
+  let orden = 0;
+  for(const f of fxFilas){
+    if(f.quitar) continue;
+    if(!f.nombreTxt){ $('#fxErr').textContent = 'Escribe el nombre de cada gasto fijo, o quita la fila vacía.'; return; }
+    const m = f.montoTxt ? parseMonto(f.montoTxt) : 0;
+    if(isNaN(m) || m<0){ $('#fxErr').textContent = 'Revisa el monto de «'+f.nombreTxt+'»: debe ser un número, por ejemplo 25,50.'; return; }
+    const d = f.diaTxt ? Number(f.diaTxt) : 0;
+    if(!Number.isInteger(d) || d<0 || d>31){ $('#fxErr').textContent = 'El día de pago de «'+f.nombreTxt+'» debe ser un número del 1 al 31.'; return; }
+    f.montoN = m; f.diaN = d;
   }
-  guardar(); render();
-  toast(n+(n===1?' movimiento agregado':' movimientos agregados'));
-}
+  for(const f of fxFilas){
+    const ant = E.fijos[f.id];
+    if(f.quitar){ if(ant && !ant.borrado){ ant.borrado = true; ant.mod = t; } continue; }
+    orden++;
+    const nuevo = {id:f.id, nombre:f.nombreTxt.slice(0,40), cat:f.cat, monto:f.montoN, dia:f.diaN, varios:!!f.varios, orden, borrado:false};
+    const cambio = !ant || ant.borrado || ['nombre','cat','monto','dia','varios','orden'].some(k=>ant[k]!==nuevo[k]);
+    if(cambio) E.fijos[f.id] = {...nuevo, mod:t};
+  }
+  if(!guardar()) return;
+  $('#veloFijos').hidden = true; render(); toast('Gastos fijos guardados');
+};
 
 function gastosPorCat(m, hastaDia){
   const t = {};
@@ -318,7 +455,7 @@ function htmlMov(x, op){
   const prev = x.estado==='previsto';
   return '<div class="mov-wrap"><button class="mov'+(prev?' previsto':'')+'" data-id="'+esc(x.id)+'">'+
     '<span class="dot" style="background:'+ci.c+'"></span>'+
-    '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(conFecha?'<span class="f">'+esc(fechaLarga(x.fecha))+(x.fecha.slice(0,4)!==String(new Date().getFullYear())?' '+x.fecha.slice(0,4):'')+'</span>':'')+(x.nota && x.nota.toLowerCase()!==ci.n.toLowerCase()?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+(x.fijo?'<span class="pill">Cada mes</span>':'')+'</div></span>'+
+    '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(conFecha?'<span class="f">'+esc(fechaLarga(x.fecha))+(x.fecha.slice(0,4)!==String(new Date().getFullYear())?' '+x.fecha.slice(0,4):'')+'</span>':'')+(x.nota && x.nota.toLowerCase()!==ci.n.toLowerCase()?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+((x.fijoId && E.fijos[x.fijoId] && !E.fijos[x.fijoId].borrado) || x.fijo ?'<span class="pill">Gasto fijo</span>':'')+'</div></span>'+
     '<span class="m num '+(x.tipo==='ingreso'?'c-in':'c-out')+'">'+(x.tipo==='ingreso'?'+ ':'− ')+money(x.monto)+'</span></button>'+
     (prev && conMarcar ? '<button class="marcar" data-marcar="'+esc(x.id)+'">'+(x.tipo==='ingreso'?'Ya se cobró ✓':'Ya se pagó ✓')+'</button>' : '')+
   '</div>';
@@ -361,7 +498,7 @@ function pintarSeg(cont, labels, sel, onPick){
 }
 
 // ---------- Formulario de movimiento ----------
-let fTipo='gasto', fCat=null, fEstado='hecho', fQuien=0, editando=null, confirmarBorrar=false;
+let fTipo='gasto', fCat=null, fEstado='hecho', fQuien=0, editando=null, confirmarBorrar=false, fFijoId=null;
 function pintarCats(){
   $('#fCats').innerHTML = CATS[fTipo].map(c=>'<button type="button" class="chip" aria-pressed="'+(c.id===fCat)+'" data-c="'+c.id+'"><i style="background:'+c.c+'"></i>'+esc(c.n)+'</button>').join('');
 }
@@ -424,6 +561,7 @@ $('#ePrev').onclick=()=>setEstadoF('previsto');
 
 function abrirForm(tipo, x){
   editando = x || null; confirmarBorrar=false;
+  fFijoId = x ? (x.fijoId||null) : null;
   fCat = x ? x.cat : null;
   setTipo(tipo);
   setEstadoF(x ? x.estado : 'hecho');
@@ -469,7 +607,12 @@ $('#formMov').addEventListener('submit', e=>{
   if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){ $('#fErr').textContent='Elige la fecha.'; $('#fOpc').open = true; return; }
   const id = editando ? editando.id : nuevoId();
   const eraNuevo = !editando;
+  const notaTxt = $('#fNota').value.trim().slice(0,80);
+  let fijoId = fTipo==='gasto' ? fFijoId : null;
+  if(fTipo==='gasto' && fijoId && E.fijos[fijoId] && E.fijos[fijoId].cat!==fCat && !palabrasFijo(notaTxt).some(w=>palabrasFijo(E.fijos[fijoId].nombre).includes(w))) fijoId = null;
+  if(fTipo==='gasto' && !fijoId){ const mf = buscarFijo(notaTxt, fCat); if(mf) fijoId = mf.id; }
   E.movs[id] = {
+    fijoId,
     id, tipo:fTipo, monto, cat:fCat, nota:$('#fNota').value.trim().slice(0,80),
     fecha, mes:fecha.slice(0,7), estado:fEstado, quien:fQuien, fijo:$('#fFijo').checked,
     de: editando ? editando.de : null, creado: editando ? editando.creado : ahora(), mod: ahora(), borrado:false
@@ -497,7 +640,7 @@ function nombreArchivo(){
 function paquete(){
   return {app:APP, v:1, de:nombre(E.yo||0), quien:E.yo, dispositivo:E.dispositivo, generado:new Date().toISOString(),
     config:E.config, movs:Object.values(E.movs),
-    pred:Object.values(E.pred), predMes:E.predMes, predCfg:E.predCfg, cursos:Object.values(E.cursos)};
+    pred:Object.values(E.pred), predMes:E.predMes, predCfg:E.predCfg, cursos:Object.values(E.cursos), fijos:Object.values(E.fijos)};
 }
 function descargar(texto, nombreA){
   const url = URL.createObjectURL(new Blob([texto],{type:'text/plain'}));
@@ -570,6 +713,12 @@ function limpiarCurso(v){
     fechas:Array.isArray(v.fechas) ? v.fechas.filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f)).slice(-120) : [],
     creado:Number(v.creado)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
 }
+function limpiarFijo(v){
+  if(!v || typeof v!=='object' || typeof v.id!=='string' || !v.id || v.id.length>80) return null;
+  const n = (x,max)=> Math.max(0, Math.min(max, Math.round(Number(x))||0));
+  return {id:v.id, nombre:String(v.nombre||'').slice(0,40)||'Gasto fijo', cat:CATS.gasto.some(c=>c.id===v.cat)?v.cat:'otros',
+    monto:n(v.monto,100000000), dia:n(v.dia,31), varios:!!v.varios, orden:Number(v.orden)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
+}
 function importarTexto(texto){
   let p;
   try{ p = JSON.parse(texto); }catch(e){ toast('Ese archivo no es de Cuentas de la casa.'); return false; }
@@ -621,6 +770,12 @@ function importarTexto(texto){
     if(!loc){ E.cursos[v.id]=v; if(!v.borrado) cNuevos++; }
     else if(v.mod > (loc.mod||0)){ E.cursos[v.id]=v; cCambios++; }
   }
+  let fjCambios = 0;
+  if(Array.isArray(p.fijos)) for(const crudo of p.fijos){
+    const v = limpiarFijo(crudo); if(!v) continue;
+    const loc = E.fijos[v.id];
+    if(!loc || v.mod > (loc.mod||0)){ E.fijos[v.id] = v; if(v.mod>1) fjCambios++; }
+  }
   E.ultRecibo = {de:String(p.de||'').slice(0,20), generado:String(p.generado||''), cuando:ahora()};
   if(!guardar()) return false;
   pedirPersistencia();
@@ -633,6 +788,7 @@ function importarTexto(texto){
   if(partes.length) msj.push('Cuentas: '+partes.join(', '));
   if(pNuevos || pCambios) msj.push('Predicación: '+[pNuevos?pNuevos+(pNuevos===1?' registro nuevo':' registros nuevos'):'', pCambios?pCambios+(pCambios===1?' cambio':' cambios'):''].filter(Boolean).join(', '));
   if(cNuevos || cCambios) msj.push('Cursos bíblicos: '+[cNuevos?cNuevos+(cNuevos===1?' nuevo':' nuevos'):'', cCambios?cCambios+(cCambios===1?' actualizado':' actualizados'):''].filter(Boolean).join(', '));
+  if(fjCambios) msj.push('Gastos fijos: '+fjCambios+(fjCambios===1?' cambio':' cambios'));
   toast(msj.length ? 'Datos juntados. '+msj.join('. ')+'.' : 'Ya estaban al día. No había nada nuevo.');
   return true;
 }
@@ -691,6 +847,7 @@ function abrirAjustes(){
   $('#veloAj').hidden=false;
 }
 $('#btnAjustes').onclick=abrirAjustes;
+$('#aFijos').onclick = ()=>{ $('#veloAj').hidden = true; abrirEditorFijos(); };
 $('#aVoz').addEventListener('change', ()=>{ E.voz = $('#aVoz').checked; guardar(); aplicarVoz(); toast(E.voz ? 'Micrófono activado' : 'Micrófono desactivado'); });
 $('#aCancelar').onclick=()=>$('#veloAj').hidden=true;
 $('#veloAj').addEventListener('click', e=>{ if(e.target.id==='veloAj') $('#veloAj').hidden=true; });
@@ -1197,6 +1354,7 @@ function entender(){
   const texto = $('#vTexto').value.trim();
   if(!texto){ vEstado('Primero di o escribe qué anotar.', false); return; }
   const r = self.CCVoz ? self.CCVoz.interpretar(texto, {tab:E.tab}) : null;
+  if(r && r.tipo==='gasto'){ const mf = buscarFijo(r.nota, r.cat); r.fijoId = mf ? mf.id : null; }
   vRes = r;
   const box = $('#vRes'); box.classList.toggle('pd', !!r && r.tipo==='pred');
   let html = '', puede = false;
@@ -1215,6 +1373,7 @@ function entender(){
     html = '<div class="v-k">'+(r.tipo==='gasto'?'Gasto':'Ingreso')+'</div>'+
       '<div class="v-big '+(r.tipo==='gasto'?'c-out':'c-in')+'">'+(r.monto?(r.tipo==='gasto'?'− ':'+ ')+money(r.monto):'Sin monto')+'</div>'+
       '<div class="v-lin"><b>'+esc(ci.n)+'</b>'+(r.nota && r.nota!==ci.n?' · '+esc(r.nota):'')+'</div>'+
+      (r.fijoId && E.fijos[r.fijoId] ? '<div class="v-lin">Gasto fijo: <b>'+esc(E.fijos[r.fijoId].nombre)+'</b> ✓</div>' : '')+
       '<div class="v-lin">'+esc(fechaCompleta(r.fecha))+'</div>'+
       '<div class="v-lin">'+(r.estado==='previsto'?(r.tipo==='gasto'?'Falta pagar (previsto)':'Falta cobrar (previsto)'):(r.tipo==='gasto'?'Ya pagado':'Ya cobrado'))+'</div>'+
       (r.cat==='otros'||r.cat==='otros_in'?'<div class="v-falta">No reconocí la categoría: quedará en «Otros». Toca «Corregir» si quieres cambiarla.</div>':'')+
@@ -1238,7 +1397,7 @@ $('#vGuardar').onclick = ()=>{
     E.pred[id] = {id, quien:q, fecha:r.fecha, mes:r.fecha.slice(0,7), min:r.min, rev:r.rev, nota:r.nota||'', creado:ahora(), mod:ahora(), borrado:false};
   } else {
     E.movs[id] = {id, tipo:r.tipo, monto:r.monto, cat:r.cat, nota:r.nota||'', fecha:r.fecha, mes:r.fecha.slice(0,7), estado:r.estado,
-      quien:q, fijo:false, de:null, creado:ahora(), mod:ahora(), borrado:false};
+      quien:q, fijo:false, de:null, fijoId:r.fijoId||null, creado:ahora(), mod:ahora(), borrado:false};
   }
   if(!guardar()) return;
   pedirPersistencia();
@@ -1258,6 +1417,7 @@ $('#vCorregir').onclick = ()=>{
   } else {
     E.tab = 'cuentas'; guardar(); render(); aplicarTab();
     abrirForm(r.tipo);
+    fFijoId = r.fijoId || null;
     fCat = r.cat; pintarCats();
     $('#fMonto').value = r.monto ? montoTexto(r.monto) : '';
     $('#fNota').value = r.nota||''; $('#fFecha').value = r.fecha; setEstadoF(r.estado); pintarOpc();
@@ -1282,8 +1442,7 @@ $('#aBorrar').onclick = ()=>{
   // Se marcan como borrados (no se quitan): así, al enviar los datos, el otro celular también los borra
   for(const col of [E.movs, E.pred, E.cursos]) for(const x of Object.values(col)) if(!x.borrado){ x.borrado = true; x.mod = t; }
   for(const k of Object.keys(E.predMes)) E.predMes[k] = {cursos:0, mod:t};
-  for(const q of ['0','1']) if(E.predCfg.metas[q]) E.predCfg.metas[q] = {min:0, mod:t};
-  E.config = {base:0, baseMes:null, nombres:E.config.nombres, topes:{}, mod:t};
+  E.config = {base:0, baseMes:null, nombres:E.config.nombres, topes:E.config.topes||{}, mod:t};
   E.ultEnvio = 0; E.ultRecibo = null;
   guardar();
   $('#aBorrarTxt').value = ''; $('#aBorrar').disabled = true; $('#aAvanzado').open = false;

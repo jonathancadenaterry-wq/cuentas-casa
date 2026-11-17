@@ -2,8 +2,8 @@
    y recibe el archivo que se comparte desde WhatsApp.
    Con internet siempre trae la versión nueva (pantalla y programa juntos);
    sin internet, o si la red tarda más de 4 segundos, usa la copia guardada. */
-const VERSION = 'cc-v9';
-const ARCHIVOS = ['./', './index.html', './voz.js?v=9', './app.js?v=9', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
+const VERSION = 'cc-v10';
+const ARCHIVOS = ['./', './index.html', './voz.js?v=10', './app.js?v=10', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION)

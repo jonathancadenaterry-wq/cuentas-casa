@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F6E8C">
-<meta name="app-version" content="9">
+<meta name="app-version" content="10">
 <meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
 <title>Cuentas de la casa</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -275,6 +275,36 @@ button{cursor:pointer}
 .anio span{font-size:.82rem;color:var(--muted)}
 .peligro{display:flex;flex-direction:column;gap:10px;border:1px solid var(--out);border-radius:12px;padding:12px}
 .peligro input{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px;width:100%;font-weight:700;letter-spacing:.08em}
+.fijos-card{background:var(--surface);border:1px solid var(--line);border-radius:18px}
+.fijos-card > summary{list-style:none;cursor:pointer;padding:16px;display:flex;flex-direction:column;gap:8px}
+.fijos-card > summary::-webkit-details-marker{display:none}
+.fc-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fc-top h3{margin:0;font-size:1rem;font-family:var(--font-display)}
+.fc-top .fc-cuenta{font-size:.85rem;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:6px}
+.fijos-card[open] .flecha{transform:rotate(90deg)}
+.fijos-card .flecha{transition:transform .15s}
+.fc-prog{height:8px;border-radius:6px;background:var(--line);overflow:hidden}
+.fc-prog i{display:block;height:100%;background:var(--in)}
+.fc-falta{font-size:.86rem;color:var(--muted)}
+.fc-falta b{color:var(--out)}
+.fc-lista{padding:0 16px 16px;display:flex;flex-direction:column;gap:8px}
+.fc-fila{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;width:100%}
+.fc-chk{width:24px;height:24px;border-radius:50%;border:2px solid var(--muted);display:grid;place-items:center;font-size:.8rem;font-weight:800;color:transparent}
+.fc-fila.pagado .fc-chk{background:var(--in);border-color:var(--in);color:#fff}
+.fc-fila.varios .fc-chk{border-style:dashed}
+.fc-n{font-weight:600;overflow-wrap:anywhere}
+.fc-s{font-size:.8rem;color:var(--muted)}
+.fc-m{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:.92rem;white-space:nowrap}
+.fc-m small{display:block;font-weight:700;font-size:.78rem;color:var(--accent)}
+.fc-fila.pagado .fc-m{color:var(--in)}
+.fx-lista{display:flex;flex-direction:column;gap:10px}
+.fx{border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--bg)}
+.fx .full{grid-column:1/-1}
+.fx label{font-size:.75rem;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.fx input[type=text],.fx select{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px;width:100%;font:inherit;min-height:44px}
+.fx .fx-pie{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fx .fx-quitar{background:none;border:none;color:var(--out);font-weight:700;padding:6px 0}
+.fx.quitado{opacity:.45}
 </style>
 </head>
 <body>
@@ -337,7 +367,7 @@ button{cursor:pointer}
     </dl>
   </section>
 
-  <div id="fijos"></div>
+  <details class="fijos-card" id="fijos" hidden></details>
 
   <section class="bloque" id="bloqueCats" hidden>
  <h3>¿En qué se fue la plata?</h3>
@@ -477,7 +507,7 @@ button{cursor:pointer}
           <span class="lbl">Lo registra</span>
           <div class="seg" role="group" aria-label="Quién" id="fQuien"></div>
         </div>
-        <label class="check"><input type="checkbox" id="fFijo"> Se repite cada mes (luz, agua, sueldo…)</label>
+        <label class="check" hidden><input type="checkbox" id="fFijo"> Se repite cada mes</label>
       </div>
     </details>
     <div class="error" id="fErr" role="alert"></div>
@@ -520,6 +550,7 @@ button{cursor:pointer}
       <span class="lbl">En este celular registra</span>
       <div class="seg" role="group" aria-label="Quién usa este celular" id="aYo"></div>
     </div>
+    <button type="button" class="btn ghost" id="aFijos">Editar gastos fijos</button>
     <details class="opc">
       <summary><span><span class="opc-k">Opcional</span><span class="opc-v">Topes de gasto al mes</span></span><svg class="flecha" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></summary>
       <div class="dentro">
@@ -543,7 +574,7 @@ button{cursor:pointer}
         </div>
         <div class="peligro">
           <b>Borrar todos los registros</b>
-          <p class="ayuda" style="margin:0">Deja la app vacía: gastos, ingresos, predicación, cursos, metas, topes y dinero inicial. Se conservan los nombres. Si después envías tus datos al otro celular, allá también se borran. No se puede deshacer.</p>
+          <p class="ayuda" style="margin:0">Deja la app vacía: gastos, ingresos, predicación, cursos y dinero inicial. Se conservan los nombres, la lista de gastos fijos, los topes y las metas. Si después envías tus datos al otro celular, allá también se borran. No se puede deshacer.</p>
           <label for="aBorrarTxt" class="ayuda" style="margin:0">Para confirmar, escribe <b>BORRAR</b>:</label>
           <input type="text" id="aBorrarTxt" autocomplete="off" autocapitalize="characters" spellcheck="false">
           <button type="button" class="btn danger" id="aBorrar" disabled>Borrar todo</button>
@@ -669,6 +700,21 @@ button{cursor:pointer}
   </div>
 </div>
 
+<!-- Gastos fijos -->
+<div class="velo" id="veloFijos" hidden>
+  <div class="hoja">
+    <h3>Gastos fijos</h3>
+    <p class="ayuda">Los que se pagan cada mes. El monto y el día son opcionales: si pones el monto, lo que falta pagar se descuenta de «Deberíamos tener a fin de mes». Marca «Varios pagos» para lo que se paga de a poco, como el transporte.</p>
+    <div class="fx-lista" id="fxLista"></div>
+    <button type="button" class="btn ghost" id="fxAgregar">+ Agregar gasto fijo</button>
+    <div class="error" id="fxErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="fxCancelar">Cancelar</button>
+      <button type="button" class="btn" id="fxGuardar">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Informe -->
 <div class="velo" id="veloInforme" hidden>
   <div class="hoja">
@@ -723,7 +769,7 @@ button{cursor:pointer}
 
 <div id="toast" hidden></div>
 
-<script src="voz.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="voz.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

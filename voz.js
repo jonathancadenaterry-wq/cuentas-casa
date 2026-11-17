@@ -18,13 +18,15 @@ const DIAS = {domingo:0,lunes:1,martes:2,miercoles:3,jueves:4,viernes:5,sabado:6
 
 // Palabras clave → categoría. El orden importa: lo más específico primero, "compras" al final.
 const CAT_GASTO = [
+  ['comida', /\b(agua de botella|agua en botella|botellon|bidon)\b/],
   ['spa', /\b(spa|sparati)\b/],
   ['salud', /\b(farmacia|medicinas?|medicamentos?|pastillas?|remedios?|doctor|doctora|medico|medica|consulta|clinica|hospital|dentista|odontologo|examenes)\b/],
   ['servicios', /\b(luz|agua|internet|planilla|telefono|plan|recarga|saldo|cable|wifi)\b/],
   ['transporte', /\b(pasajes?|bus|buses|taxi|gasolina|combustible|diesel|transporte|moto|mototaxi|carro|camioneta|ranchera|flete|peaje)\b/],
   ['educacion', /\b(escuela|colegio|utiles|universidad|estudios|matricula|pension|copias|impresiones)\b/],
   ['ropa', /\b(ropa|zapatos?|zapatillas|camisa|pantalon|vestido|blusa|uniforme)\b/],
-  ['deudas', /\b(deudas?|cuotas?|tarjeta|abono|letra)\b/],
+  ['deudas', /\b(deudas?|cuotas?|tarjeta|abono|letra|banco|cooperativa)\b/],
+  ['trabajo', /\b(local)\b/],
   ['casa', /\b(casa|arriendo|alquiler|ferreteria|limpieza|detergente|gas|tanque|muebles?|cocina)\b/],
   ['gustos', /\b(helados?|cine|paseo|salida|regalos?|gustos?|cumpleanos|fiesta)\b/],
   ['trabajo', /\b(trabajo|oficina)\b/],
