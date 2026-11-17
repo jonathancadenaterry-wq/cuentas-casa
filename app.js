@@ -9,6 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => fmt.format((c||0)/100);
 const APP = 'cuentas-casa';
+const VERSION_APP = '6';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -1037,6 +1038,23 @@ try{
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
+
+// ---------- Actualizar ----------
+async function actualizarApp(){
+  try{
+    const ks = await caches.keys();
+    await Promise.all(ks.filter(k=>k!=='cc-compartido').map(k=>caches.delete(k)));
+    if(navigator.serviceWorker){ const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.update().catch(()=>{}))); }
+  }catch(e){}
+  location.reload();
+}
+$('#aActualizar').onclick = ()=>{ $('#aActualizar').textContent = 'Actualizando…'; actualizarApp(); };
+$('#aVersion').textContent = 'Versión de la app: '+VERSION_APP;
+// Si la pantalla y el programa no son de la misma versión, se actualiza sola una vez
+try{
+  const vPag = (document.querySelector('meta[name="app-version"]')||{}).content;
+  if(vPag && vPag!==VERSION_APP && !sessionStorage.getItem('cc_reparo')){ sessionStorage.setItem('cc_reparo','1'); actualizarApp(); }
+}catch(e){}
 
 // ---------- Arranque ----------
 cargar();

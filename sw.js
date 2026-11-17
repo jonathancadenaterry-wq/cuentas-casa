@@ -1,10 +1,14 @@
 /* Guarda la app en el celular para que abra sin internet,
-   y recibe el archivo que se comparte desde WhatsApp. */
-const VERSION = 'cc-v5';
-const ARCHIVOS = ['./', './index.html', './app.js', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
+   y recibe el archivo que se comparte desde WhatsApp.
+   Con internet siempre trae la versión nueva (pantalla y programa juntos);
+   sin internet, o si la red tarda más de 4 segundos, usa la copia guardada. */
+const VERSION = 'cc-v6';
+const ARCHIVOS = ['./', './index.html', './app.js?v=6', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then(c => c.addAll(ARCHIVOS.map(u => new Request(u, {cache: 'reload'}))))
+    .then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(
@@ -28,13 +32,19 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  // Responde con lo guardado y, por detrás, trae la versión nueva para la próxima vez
+  const nav = e.request.mode === 'navigate';
   e.respondWith((async () => {
     const c = await caches.open(VERSION);
-    const guardado = await c.match(e.request, {ignoreSearch: true});
-    const red = fetch(e.request).then(r => { if (r && r.ok) c.put(e.request, r.clone()); return r; }).catch(() => null);
-    if (guardado) { e.waitUntil(red); return guardado; }
-    const r = await red;
-    return r || (await c.match('./index.html')) || new Response('Sin conexión', {status: 503});
+    const clave = nav ? './index.html' : e.request;
+    const red = fetch(nav ? url.origin + url.pathname : e.request.url, {cache: 'no-cache', credentials: 'same-origin'})
+      .then(r => { if (r && r.ok) c.put(clave, r.clone()); return r; })
+      .catch(() => null);
+    e.waitUntil(red);
+    const espera = new Promise(r => setTimeout(() => r(null), 4000));
+    const r = await Promise.race([red, espera]);
+    if (r && r.ok) return r;
+    const guardado = await c.match(clave);
+    if (guardado) return guardado;
+    return (await red) || new Response('Sin conexión', {status: 503});
   })());
 });

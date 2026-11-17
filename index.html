@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F6E8C">
+<meta name="app-version" content="6">
 <meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
 <title>Cuentas de la casa</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -465,6 +466,11 @@ button{cursor:pointer}
       <button type="button" class="btn ghost" id="aCancelar">Cancelar</button>
       <button type="submit" class="btn" id="aGuardar">Guardar</button>
     </div>
+    <div class="campo">
+      <span class="lbl" id="aVersion">Versión de la app</span>
+      <button type="button" class="btn ghost" id="aActualizar">Actualizar la app ahora</button>
+      <p class="ayuda">Úsalo si un botón no responde después de una mejora. Necesita internet. Tus datos no se borran.</p>
+    </div>
   </form>
 </div>
 
@@ -597,6 +603,6 @@ button{cursor:pointer}
 
 <div id="toast" hidden></div>
 
-<script src="app.js"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
