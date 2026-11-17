@@ -54,6 +54,22 @@ function parseMonto(str){
   const v = parseFloat(s);
   return isFinite(v) ? Math.round(v*100) : NaN;
 }
+// Acepta sumas y restas: "12,50+3+4,25"
+function parseSuma(str){
+  const s = String(str||'').replace(/\s/g,'');
+  if(!s) return NaN;
+  const partes = s.match(/[+-]?[^+-]+/g);
+  if(!partes || partes.join('')!==s) return NaN;
+  let total = 0;
+  for(const p of partes){
+    const neg = p[0]==='-';
+    const v = parseMonto(p.replace(/^[+-]/,''));
+    if(isNaN(v)) return NaN;
+    total += neg ? -v : v;
+  }
+  return total;
+}
+const esSuma = s => /\d\s*[+-]\s*\d/.test(String(s||''));
 const montoTexto = c => ((c||0)/100).toFixed(2).replace('.',',');
 
 function fechaCorta(iso){
@@ -76,7 +92,7 @@ function textoHace(ms){
 // ---------- Datos (solo en este celular) ----------
 let E = {
   movs:{},                     // id -> movimiento (los borrados quedan marcados para que el borrado viaje al otro celular)
-  config:{base:0, baseMes:null, nombres:['Jonathan','Elba'], mod:0},
+  config:{base:0, baseMes:null, nombres:['Jonathan','Elba'], topes:{}, mod:0},
   dispositivo:null, yo:null, ultEnvio:0, ultRecibo:null
 };
 let almacenamientoOk = true;
@@ -87,6 +103,7 @@ function cargar(){
     if(s){ const v = JSON.parse(s); if(v && typeof v==='object') E = Object.assign(E, v); }
   }catch(e){ almacenamientoOk = false; }
   if(!E.dispositivo) E.dispositivo = nuevoId();
+  if(!E.config.topes || typeof E.config.topes!=='object') E.config.topes = {};
 }
 function guardar(){
   try{ localStorage.setItem(CLAVE, JSON.stringify(E)); return true; }
@@ -159,7 +176,7 @@ function render(){
   $('#vGasP').textContent = '− '+money(r.gasP);
   renderSinc();
   renderFijos();
-  renderCats(r.delMes);
+  renderCats();
   renderLista(r.delMes);
 }
 
@@ -207,19 +224,62 @@ function traerFijos(){
   toast(n+(n===1?' movimiento agregado':' movimientos agregados'));
 }
 
-function renderCats(delMes){
-  const g = delMes.filter(x=>x.tipo==='gasto');
+function gastosPorCat(m, hastaDia){
+  const t = {};
+  for(const x of lista()){
+    if(x.tipo!=='gasto' || x.mes!==m) continue;
+    if(hastaDia && Number(x.fecha.slice(8,10))>hastaDia) continue;
+    const c = t[x.cat] || (t[x.cat]={h:0,p:0});
+    if(x.estado==='previsto') c.p+=x.monto; else c.h+=x.monto;
+  }
+  return t;
+}
+function renderCats(){
   const blk = $('#bloqueCats');
-  if(!g.length){ blk.hidden = true; return; }
+  const topes = E.config.topes || {};
+  const tot = gastosPorCat(mes);
+  for(const id of Object.keys(topes)) if(topes[id]>0 && !tot[id]) tot[id]={h:0,p:0};
+  const ids = Object.keys(tot);
+  if(!ids.length){ blk.hidden = true; return; }
   blk.hidden = false;
-  const tot = {};
-  for(const x of g){ const t = tot[x.cat] || (tot[x.cat]={h:0,p:0}); if(x.estado==='previsto') t.p+=x.monto; else t.h+=x.monto; }
-  const filas = Object.entries(tot).map(([id,t])=>({id,h:t.h,p:t.p,s:t.h+t.p})).sort((a,b)=>b.s-a.s);
-  const max = filas[0].s || 1;
+  // Comparación: si es el mes en curso, contra octubre "a esta misma fecha"; si no, contra el mes completo
+  const ant = addMes(mes,-1);
+  const nAnt = MESES[Number(ant.split('-')[1])-1];
+  const enCurso = mes===ym(new Date());
+  const corte = enCurso ? new Date().getDate() : 0;
+  const prev = gastosPorCat(ant, corte);
+  const sum = o => Object.values(o).reduce((a,c)=>a+c.h,0);
+  const totAct = sum(tot), totAnt = sum(prev);
+  let comp = '';
+  if(totAnt>0){
+    const d = totAct-totAnt;
+    const cuando = enCurso ? 'a esta misma fecha de '+nAnt : 'en '+nAnt;
+    comp = Math.abs(d)<100 ? 'Van casi igual que '+cuando+' ('+money(totAnt)+').'
+      : 'Llevan <b class="'+(d>0?'c-out':'c-in')+'">'+money(Math.abs(d))+' '+(d>0?'más':'menos')+'</b> en gastos que '+cuando+' ('+money(totAnt)+').';
+  }
+  $('#comp').innerHTML = comp;
+  const filas = ids.map(id=>({id,h:tot[id].h,p:tot[id].p,s:tot[id].h+tot[id].p,tope:topes[id]||0}))
+    .sort((a,b)=> (b.s-a.s) || (b.tope-a.tope));
+  const maxSin = Math.max(1, ...filas.filter(f=>!f.tope).map(f=>f.s));
   $('#cats').innerHTML = filas.map(f=>{
     const ci = catInfo('gasto',f.id);
-    return '<div class="cat-row"><span>'+esc(ci.n)+'</span><span class="num"><b>'+money(f.s)+'</b></span>'+
-      '<div class="bar"><i style="width:'+(f.h/max*100)+'%;background:'+ci.c+'"></i><i class="prev" style="width:'+(f.p/max*100)+'%;background:'+ci.c+'"></i></div></div>';
+    const escala = f.tope ? Math.max(f.tope, f.s) : maxSin;
+    let color = ci.c, estado = '';
+    if(f.tope){
+      const r = f.s/f.tope;
+      if(r>1){ color='var(--out)'; estado='<span class="c-out">Se pasaron por '+money(f.s-f.tope)+'</span>'; }
+      else if(r>=0.8){ color='var(--warn)'; estado='<span class="c-warn">Quedan '+money(f.tope-f.s)+'</span>'; }
+      else estado='<span>Quedan '+money(f.tope-f.s)+'</span>';
+    }
+    const p = prev[f.id] ? prev[f.id].h : 0;
+    let vs = '';
+    if(p>0 || f.h>0){
+      const d = f.h-p;
+      vs = p===0 ? '<span>'+nAnt+': $0</span>' : (Math.abs(d)<100 ? '<span>Igual que '+nAnt+'</span>' : '<span class="'+(d>0?'c-out':'c-in')+'">'+(d>0?'+':'−')+money(Math.abs(d))+' vs '+nAnt+'</span>');
+    }
+    return '<div class="cat-row"><span>'+esc(ci.n)+'</span><span class="num"><b>'+money(f.s)+'</b>'+(f.tope?' de '+money(f.tope):'')+'</span>'+
+      '<div class="bar"><i style="width:'+(f.h/escala*100)+'%;background:'+color+'"></i><i class="prev" style="width:'+(f.p/escala*100)+'%;background:'+color+'"></i></div>'+
+      ((estado||vs)?'<div class="sub">'+(estado||'<span></span>')+vs+'</div>':'')+'</div>';
   }).join('');
 }
 
@@ -229,6 +289,16 @@ function fechaLarga(iso){
   const ay = new Date(); ay.setDate(ay.getDate()-1);
   if(iso===isoDe(ay)) return 'Ayer';
   return DIAS[new Date(y,m-1,d).getDay()]+' '+d+' de '+MESES[m-1];
+}
+function htmlMov(x, conFecha){
+  const ci = catInfo(x.tipo,x.cat);
+  const prev = x.estado==='previsto';
+  return '<div class="mov-wrap"><button class="mov'+(prev?' previsto':'')+'" data-id="'+esc(x.id)+'">'+
+    '<span class="dot" style="background:'+ci.c+'"></span>'+
+    '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(conFecha?'<span class="f">'+esc(fechaLarga(x.fecha))+(x.fecha.slice(0,4)!==String(new Date().getFullYear())?' '+x.fecha.slice(0,4):'')+'</span>':'')+(x.nota?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+(x.fijo?'<span class="pill">Cada mes</span>':'')+'</div></span>'+
+    '<span class="m num '+(x.tipo==='ingreso'?'c-in':'c-out')+'">'+(x.tipo==='ingreso'?'+ ':'− ')+money(x.monto)+'</span></button>'+
+    (prev && !conFecha ? '<button class="marcar" data-marcar="'+esc(x.id)+'">'+(x.tipo==='ingreso'?'Ya se cobró ✓':'Ya se pagó ✓')+'</button>' : '')+
+  '</div>';
 }
 function renderLista(delMes){
   const box = $('#lista');
@@ -243,16 +313,7 @@ function renderLista(delMes){
     if(last && last.f===x.fecha) last.items.push(x); else grupos.push({f:x.fecha,items:[x]});
   }
   box.innerHTML = grupos.map(gr=>'<div class="dia"><div class="dia-tit">'+esc(fechaLarga(gr.f))+'</div>'+
-    gr.items.map(x=>{
-      const ci = catInfo(x.tipo,x.cat);
-      const prev = x.estado==='previsto';
-      return '<div class="mov-wrap"><button class="mov'+(prev?' previsto':'')+'" data-id="'+esc(x.id)+'">'+
-        '<span class="dot" style="background:'+ci.c+'"></span>'+
-        '<span><div class="t">'+esc(x.nota||ci.n)+'</div><div class="s">'+(x.nota?'<span>'+esc(ci.n)+'</span>':'')+'<span>'+esc(nombre(x.quien))+'</span>'+(prev?'<span class="pill prev">Previsto</span>':'')+(x.fijo?'<span class="pill">Cada mes</span>':'')+'</div></span>'+
-        '<span class="m num '+(x.tipo==='ingreso'?'c-in':'c-out')+'">'+(x.tipo==='ingreso'?'+ ':'− ')+money(x.monto)+'</span></button>'+
-        (prev ? '<button class="marcar" data-marcar="'+esc(x.id)+'">'+(x.tipo==='ingreso'?'Ya se cobró ✓':'Ya se pagó ✓')+'</button>' : '')+
-      '</div>';
-    }).join('')+'</div>').join('');
+    gr.items.map(x=>htmlMov(x,false)).join('')+'</div>').join('');
 }
 $('#lista').addEventListener('click', e=>{
   const m = e.target.closest('[data-marcar]');
@@ -287,7 +348,36 @@ function setTipo(t){
   $('#fNota').placeholder = t==='gasto' ? 'Ej.: planilla de luz' : 'Ej.: sueldo de noviembre';
   $('#ePrev').textContent = t==='gasto' ? 'No, falta pagar' : 'No, falta cobrar';
   pintarCats();
+  pintarFrec();
 }
+function frecuentes(tipo){
+  const desde = isoDe(new Date(Date.now()-120*86400000));
+  const g = {};
+  for(const x of lista()){
+    if(x.tipo!==tipo || x.fecha<desde || x.de) continue;
+    const k = x.cat+'|'+x.nota.trim().toLowerCase()+'|'+x.monto;
+    const e = g[k] || (g[k]={n:0,ult:0,x});
+    e.n++; if((x.creado||0)>=e.ult){ e.ult=x.creado||0; e.x=x; }
+  }
+  return Object.values(g).filter(e=>e.n>=2).sort((a,b)=> b.n-a.n || b.ult-a.ult).slice(0,4).map(e=>e.x);
+}
+function pintarFrec(){
+  const cont = $('#frecCampo');
+  const fs = editando ? [] : frecuentes(fTipo);
+  cont.hidden = !fs.length;
+  $('#frec').innerHTML = fs.map(x=>'<button type="button" data-f="'+esc(x.id)+'">'+esc(x.nota||catInfo(x.tipo,x.cat).n)+'<small>'+money(x.monto)+'</small></button>').join('');
+}
+$('#frec').addEventListener('click', e=>{
+  const b = e.target.closest('[data-f]'); if(!b) return;
+  const x = E.movs[b.dataset.f]; if(!x) return;
+  const fecha = mes===ym(new Date()) ? hoyISO() : mes+'-01';
+  const id = nuevoId();
+  E.movs[id] = {id, tipo:x.tipo, monto:x.monto, cat:x.cat, nota:x.nota, fecha, mes:fecha.slice(0,7), estado:'hecho',
+    quien:(E.yo===null?0:E.yo), fijo:false, de:null, creado:ahora(), mod:ahora(), borrado:false};
+  if(!guardar()) return;
+  cerrarForm(); render();
+  toast((x.nota||catInfo(x.tipo,x.cat).n)+' '+money(x.monto)+' anotado. Tócalo en la lista si hay que corregir algo.');
+});
 function setEstadoF(s){ fEstado=s; $('#eHecho').setAttribute('aria-pressed',s==='hecho'); $('#ePrev').setAttribute('aria-pressed',s==='previsto'); }
 $('#tGasto').onclick=()=>setTipo('gasto');
 $('#tIngreso').onclick=()=>setTipo('ingreso');
@@ -307,10 +397,23 @@ function abrirForm(tipo, x){
   $('#fFecha').value = x ? x.fecha : (mes===ym(new Date()) ? hoyISO() : mes+'-01');
   $('#fFijo').checked = x ? x.fijo : false;
   $('#fErr').textContent='';
+  mostrarTotal();
   const el = $('#fEliminar'); el.hidden = !x; el.textContent='Eliminar';
   $('#veloMov').hidden=false;
   if(!x) setTimeout(()=>$('#fMonto').focus(),60);
 }
+function mostrarTotal(){
+  const v = $('#fMonto').value;
+  if(!esSuma(v)){ $('#fTotal').textContent=''; return; }
+  const t = parseSuma(v);
+  $('#fTotal').textContent = isNaN(t) ? 'Revisa la suma' : '= '+money(t);
+}
+$('#fMonto').addEventListener('input', mostrarTotal);
+$('#fMas').onclick = ()=>{
+  const i = $('#fMonto'); const v = i.value.trim();
+  if(v && !/[+-]$/.test(v)) i.value = v+'+';
+  i.focus(); mostrarTotal();
+};
 function cerrarForm(){ $('#veloMov').hidden=true; editando=null; }
 $('#fCancelar').onclick=cerrarForm;
 $('#veloMov').addEventListener('click', e=>{ if(e.target.id==='veloMov') cerrarForm(); });
@@ -319,7 +422,7 @@ $('#addIngreso').onclick=()=>abrirForm('ingreso');
 
 $('#formMov').addEventListener('submit', e=>{
   e.preventDefault();
-  const monto = parseMonto($('#fMonto').value);
+  const monto = parseSuma($('#fMonto').value);
   const fecha = $('#fFecha').value;
   if(!(monto>0)){ $('#fErr').textContent='Escribe un monto mayor que cero, por ejemplo 12,50.'; return; }
   if(!fCat){ $('#fErr').textContent='Elige una categoría.'; return; }
@@ -404,6 +507,11 @@ $('#archivo').addEventListener('change', async ()=>{
   try{ importarTexto(await f.text()); }catch(e){ toast('No se pudo leer el archivo.'); }
 });
 
+function limpiarTopes(t){
+  const r = {};
+  if(t && typeof t==='object') for(const c of CATS.gasto){ const v=Math.round(Number(t[c.id])); if(v>0 && isFinite(v)) r[c.id]=v; }
+  return r;
+}
 function importarTexto(texto){
   let p;
   try{ p = JSON.parse(texto); }catch(e){ toast('Ese archivo no es de Cuentas de la casa.'); return false; }
@@ -425,6 +533,7 @@ function importarTexto(texto){
       base: Math.round(Number(c.base))||0,
       baseMes: /^\d{4}-\d{2}$/.test(c.baseMes) ? c.baseMes : null,
       nombres: Array.isArray(c.nombres)&&c.nombres.length===2 ? c.nombres.map(n=>String(n).slice(0,20)) : E.config.nombres,
+      topes: limpiarTopes(c.topes),
       mod: Number(c.mod)||0
     };
   }
@@ -483,6 +592,8 @@ function abrirAjustes(){
   $('#aBase').value = E.config.base ? montoTexto(E.config.base) : '';
   $('#aMes').value = E.config.baseMes || ym(new Date());
   $('#aN1').value = nombre(0); $('#aN2').value = nombre(1);
+  const tp = E.config.topes || {};
+  $('#aTopes').innerHTML = CATS.gasto.map(c=>'<label class="tope" for="tope-'+c.id+'"><span>'+esc(c.n)+'</span><input type="text" inputmode="decimal" id="tope-'+c.id+'" data-tope="'+c.id+'" placeholder="Sin tope" value="'+(tp[c.id]?montoTexto(tp[c.id]):'')+'"></label>').join('');
   aYo = E.yo||0;
   const pint = ()=>pintarSeg($('#aYo'), [$('#aN1').value||'Persona 1',$('#aN2').value||'Persona 2'], aYo, i=>{aYo=i;pint();});
   pint();
@@ -500,11 +611,44 @@ $('#formAj').addEventListener('submit', e=>{
   if(isNaN(base)){ $('#aErr').textContent='El dinero inicial debe ser un número, por ejemplo 250,00.'; return; }
   const baseMes = /^\d{4}-\d{2}$/.test($('#aMes').value) ? $('#aMes').value : ym(new Date());
   const nombres = [$('#aN1').value.trim()||'Persona 1', $('#aN2').value.trim()||'Persona 2'];
-  const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|');
-  if(cambio) E.config = {base, baseMes, nombres, mod:ahora()};
+  const topes = {};
+  for(const inp of document.querySelectorAll('[data-tope]')){
+    const t = inp.value.trim(); if(!t) continue;
+    const v = parseMonto(t);
+    if(isNaN(v) || v<0){ $('#aErr').textContent='Revisa el tope de '+catInfo('gasto',inp.dataset.tope).n+': debe ser un número, por ejemplo 200.'; return; }
+    if(v>0) topes[inp.dataset.tope]=v;
+  }
+  const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|') || JSON.stringify(topes)!==JSON.stringify(E.config.topes||{});
+  if(cambio) E.config = {base, baseMes, nombres, topes, mod:ahora()};
   E.yo = aYo;
   if(!guardar()) return;
   $('#veloAj').hidden=true; toast('Ajustes guardados'); render();
+});
+
+// ---------- Buscar ----------
+function sinTildes(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+function buscar(){
+  const q = sinTildes($('#bTexto').value.trim());
+  if(!q){ $('#bTot').textContent=''; $('#bLista').innerHTML=''; return; }
+  const qMonto = parseMonto(q);
+  const res = lista().filter(x=>{
+    if(sinTildes(x.nota).includes(q) || sinTildes(catInfo(x.tipo,x.cat).n).includes(q)) return true;
+    return !isNaN(qMonto) && qMonto>0 && x.monto===qMonto;
+  }).sort((a,b)=> b.fecha.localeCompare(a.fecha)).slice(0,100);
+  if(!res.length){ $('#bTot').textContent='No hay movimientos con «'+$('#bTexto').value.trim()+'».'; $('#bLista').innerHTML=''; return; }
+  const g = res.filter(x=>x.tipo==='gasto').reduce((a,x)=>a+x.monto,0);
+  const i = res.filter(x=>x.tipo==='ingreso').reduce((a,x)=>a+x.monto,0);
+  $('#bTot').innerHTML = res.length+(res.length===1?' movimiento':' movimientos')+(g?' · gastos <b class="c-out">'+money(g)+'</b>':'')+(i?' · ingresos <b class="c-in">'+money(i)+'</b>':'');
+  $('#bLista').innerHTML = res.map(x=>htmlMov(x,true)).join('');
+}
+$('#btnBuscar').onclick = ()=>{ $('#veloBuscar').hidden=false; buscar(); setTimeout(()=>$('#bTexto').focus(),60); };
+$('#bCerrar').onclick = ()=>$('#veloBuscar').hidden=true;
+$('#veloBuscar').addEventListener('click', e=>{ if(e.target.id==='veloBuscar') $('#veloBuscar').hidden=true; });
+$('#bTexto').addEventListener('input', buscar);
+$('#bLista').addEventListener('click', e=>{
+  const b = e.target.closest('.mov'); if(!b) return;
+  const x = E.movs[b.getAttribute('data-id')]; if(!x) return;
+  $('#veloBuscar').hidden=true; abrirForm(x.tipo,x);
 });
 
 // ---------- Navegación ----------

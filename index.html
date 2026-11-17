@@ -151,6 +151,23 @@ button{cursor:pointer}
 .quien-ini button{border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:18px 10px;font-weight:700;font-size:1.05rem}
 .quien-ini button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 
+.top-btns{display:flex;gap:8px}
+.frec{display:flex;flex-wrap:wrap;gap:8px}
+.frec[hidden]{display:none}
+.frec button{border:1px dashed var(--accent);background:var(--accent-soft);border-radius:12px;padding:8px 12px;font-size:.88rem;font-weight:600;text-align:left}
+.frec button small{display:block;font-weight:700;color:var(--muted)}
+.monto-fila{display:grid;grid-template-columns:1fr auto;gap:8px}
+.monto-fila button{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:0 16px;font-size:1.5rem;font-weight:700;min-width:56px}
+.total-suma{font-size:.9rem;font-weight:700;color:var(--accent);min-height:1.2em}
+.cat-row .sub{grid-column:1/-1;font-size:.78rem;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cat-row .bar i.sobre{background:var(--out)!important}
+.comp{font-size:.88rem;color:var(--muted)}
+.topes{display:flex;flex-direction:column;gap:8px}
+.tope{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center;font-size:.92rem}
+.tope input{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 10px;width:100%;text-align:right;font-variant-numeric:tabular-nums}
+.res-tot{font-size:.9rem;color:var(--muted)}
+.res-lista{display:flex;flex-direction:column;gap:8px}
+.mov .s .f{font-weight:600}
 </style>
 </head>
 <body>
@@ -160,9 +177,14 @@ button{cursor:pointer}
       <h1>Cuentas de la casa</h1>
       <span id="soy" class="sync ok">—</span>
     </div>
+    <div class="top-btns">
+    <button class="icon-btn" id="btnBuscar" aria-label="Buscar">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    </button>
     <button class="icon-btn" id="btnAjustes" aria-label="Ajustes">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
+    </div>
   </header>
 
   <div class="instalar" id="bannerInstalar" hidden>
@@ -213,9 +235,10 @@ button{cursor:pointer}
   <div id="fijos"></div>
 
   <section class="bloque" id="bloqueCats" hidden>
-    <h3>¿En qué se fue la plata?</h3>
+ <h3>¿En qué se fue la plata?</h3>
+    <div class="comp" id="comp"></div>
     <div id="cats" style="display:flex;flex-direction:column;gap:12px"></div>
-    <div class="leyenda">Parte clara: gastos previstos que aún no se pagan.</div>
+    <div class="leyenda">Parte clara: gastos previstos que aún no se pagan. Los topes se ponen en ⚙ Ajustes.</div>
   </section>
 
   <section id="lista" style="display:flex;flex-direction:column;gap:14px" aria-label="Movimientos"></section>
@@ -252,9 +275,17 @@ button{cursor:pointer}
       <button type="button" id="tGasto" aria-pressed="true">Gasto</button>
       <button type="button" id="tIngreso" aria-pressed="false">Ingreso</button>
     </div>
+    <div class="campo" id="frecCampo" hidden>
+      <span class="lbl">Frecuentes: un toque y queda anotado hoy</span>
+      <div class="frec" id="frec"></div>
+    </div>
     <div class="campo">
       <label for="fMonto">Monto en dólares</label>
-      <input type="text" id="fMonto" inputmode="decimal" placeholder="0,00">
+      <div class="monto-fila">
+        <input type="text" id="fMonto" inputmode="decimal" placeholder="0,00">
+        <button type="button" id="fMas" aria-label="Sumar otro valor">+</button>
+      </div>
+      <div class="total-suma" id="fTotal" aria-live="polite"></div>
     </div>
     <div class="campo">
       <span class="lbl">Categoría</span>
@@ -314,6 +345,11 @@ button{cursor:pointer}
       <label for="aMes">¿Desde qué mes?</label>
       <input type="month" id="aMes">
     </div>
+    <div class="campo">
+      <span class="lbl">Topes de gasto al mes (opcional)</span>
+      <p class="ayuda">Deja vacío lo que no quieras controlar. La barra se pone amarilla al llegar al 80 % y roja al pasarse.</p>
+      <div class="topes" id="aTopes"></div>
+    </div>
     <div class="campo"><label for="aN1">Nombre 1</label><input type="text" id="aN1" maxlength="20"></div>
     <div class="campo"><label for="aN2">Nombre 2</label><input type="text" id="aN2" maxlength="20"></div>
     <div class="campo">
@@ -326,6 +362,20 @@ button{cursor:pointer}
       <button type="submit" class="btn" id="aGuardar">Guardar</button>
     </div>
   </form>
+</div>
+
+<!-- Buscar -->
+<div class="velo" id="veloBuscar" hidden>
+  <div class="hoja">
+    <h3>Buscar</h3>
+    <div class="campo">
+      <label for="bTexto">Detalle, categoría o monto</label>
+      <input type="text" id="bTexto" placeholder="Ej.: gas, luz, 25">
+    </div>
+    <div class="res-tot" id="bTot"></div>
+    <div class="res-lista" id="bLista"></div>
+    <button type="button" class="btn ghost" id="bCerrar">Cerrar</button>
+  </div>
 </div>
 
 <div id="toast" hidden></div>
