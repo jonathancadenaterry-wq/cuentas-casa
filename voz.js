@@ -104,7 +104,7 @@ function interpretar(texto, op){
   } else if((m = resto.match(/\s(anteayer|antier|antes de ayer)\s/))){ f = new Date(hoy); f.setDate(f.getDate()-2); quitar(m[0]); }
   else if((m = resto.match(/\sayer\s/))){ f = new Date(hoy); f.setDate(f.getDate()-1); quitar(m[0]); }
   else if((m = resto.match(/\s(?:pasado manana)\s/))){ f = new Date(hoy); f.setDate(f.getDate()+2); quitar(m[0]); }
-  else if((m = resto.match(/\s(?<!(?:la|esta|por la|en la)\s)manana\s/))){ f = new Date(hoy); f.setDate(f.getDate()+1); quitar(m[0]); }
+  else if((m = resto.match(/\smanana\s/)) && !/\s(?:la|esta|por la|en la)$/.test(resto.slice(0, m.index))){ f = new Date(hoy); f.setDate(f.getDate()+1); quitar(m[0]); }
   else if((m = resto.match(/\s(?:el|este|esta|del|la)?\s*(lunes|martes|miercoles|jueves|viernes|sabado|domingo)(\s+pasado)?\s/))){
     let dif = (hoy.getDay() - DIAS[m[1]] + 7) % 7;
     if(m[2] && dif===0) dif = 7;
@@ -140,6 +140,7 @@ function interpretar(texto, op){
   else if(ingreso && !/\s(gaste|gastamos|pague|pagamos|compre|compramos)\s/.test(t)) r.tipo = 'ingreso';
   else if(gasto || dinero) r.tipo = 'gasto';
   else if(min!==null || rev!==null) r.tipo = 'pred';
+  else if(CAT_GASTO.some(([,rx])=>rx.test(t)) && /\d/.test(resto)) r.tipo = 'gasto';
   else if(op.tab==='pred') r.tipo = 'pred';
   else if(/\d/.test(resto)) r.tipo = 'gasto';
 

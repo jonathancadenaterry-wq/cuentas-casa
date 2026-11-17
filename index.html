@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F6E8C">
-<meta name="app-version" content="7">
+<meta name="app-version" content="8">
 <meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
 <title>Cuentas de la casa</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -241,6 +241,21 @@ button{cursor:pointer}
 .v-res .v-big{font-family:var(--font-display);font-size:1.9rem;line-height:1.1}
 .v-res .v-lin{font-size:.95rem}
 .v-res .v-falta{color:var(--out);font-weight:700;font-size:.92rem}
+.opc{border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.opc summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.92rem}
+.opc summary::-webkit-details-marker{display:none}
+.opc summary .opc-k{font-weight:700;color:var(--muted);font-size:.8rem;display:block}
+.opc summary .opc-v{font-weight:600}
+.opc summary .flecha{flex:none;transition:transform .15s;color:var(--muted)}
+.opc[open] summary .flecha{transform:rotate(90deg)}
+.opc .dentro{padding:2px 14px 14px;display:flex;flex-direction:column;gap:14px}
+.dato.boton{border:none;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;color:var(--muted)}
+.dato small{font-size:.7rem;font-weight:600}
+.rec-sinc{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:14px;padding:10px 12px;font-size:.9rem}
+.rec-sinc[hidden]{display:none}
+.rec-sinc .btn{padding:9px 12px;font-size:.88rem;flex:none}
+.link-base{background:none;border:none;color:var(--accent);font-weight:700;padding:4px 0 0;text-align:left;font-size:.88rem}
+.link-base[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -279,12 +294,18 @@ button{cursor:pointer}
     <button class="icon-btn" id="next" aria-label="Mes siguiente"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
   </nav>
 
+  <div class="rec-sinc" id="recSinc" hidden>
+    <span id="recSincTxt"></span>
+    <button type="button" class="btn" id="recSincBtn">Enviar</button>
+  </div>
+
   <div class="tab" id="tabCuentas">
   <section class="resumen" aria-label="Resumen del mes">
     <div>
       <div class="meta-lbl">Deberíamos tener a fin de mes</div>
       <div class="meta num" id="vFin">$0,00</div>
       <div class="meta-nota" id="vFinNota">Incluye lo que falta cobrar y pagar este mes.</div>
+      <button type="button" class="link-base" id="ponerBase" hidden>¿Con cuánto dinero empezaron? Ponlo aquí</button>
     </div>
     <div class="hoy-box"><span>Hoy tenemos</span><b class="num" id="vHoy">$0,00</b></div>
     <dl class="lineas num">
@@ -297,15 +318,6 @@ button{cursor:pointer}
     </dl>
   </section>
 
-  <section class="sinc" id="sinc" aria-label="Juntar cuentas">
-    <h3 id="sincTit">Juntar cuentas</h3>
-    <div class="st" id="sincEstado"></div>
-    <div class="botones">
-      <button class="btn" id="btnEnviar">Enviar mis cuentas</button>
-      <button class="btn ghost" id="btnRecibir">Recibir cuentas</button>
-    </div>
-  </section>
-
   <div id="fijos"></div>
 
   <section class="bloque" id="bloqueCats" hidden>
@@ -316,6 +328,14 @@ button{cursor:pointer}
   </section>
 
   <section id="lista" style="display:flex;flex-direction:column;gap:14px" aria-label="Movimientos"></section>
+  <section class="sinc" id="sinc" aria-label="Juntar cuentas">
+    <h3 id="sincTit">Juntar cuentas</h3>
+    <div class="st" id="sincEstado"></div>
+    <div class="botones">
+      <button class="btn" id="btnEnviar">Enviar mis cuentas</button>
+      <button class="btn ghost" id="btnRecibir">Recibir cuentas</button>
+    </div>
+  </section>
   </div>
 
   <div class="tab" id="tabPred" hidden>
@@ -335,9 +355,9 @@ button{cursor:pointer}
         </svg>
       </div>
       <div class="pred-datos">
-        <div class="dato"><span>Cursos bíblicos</span><div class="paso"><button type="button" id="pCurMenos" aria-label="Un curso menos">−</button><b id="pCursos">0</b><button type="button" id="pCurMas" aria-label="Un curso más">+</button></div></div>
-        <div class="dato"><span>Revisitas</span><b id="pRev">0</b></div>
-        <div class="dato"><span>Días que salió</span><b id="pDias">0</b></div>
+        <button type="button" class="dato boton" id="pCursosBtn" aria-label="Ver los cursos bíblicos"><span>Cursos bíblicos</span><b id="pCursos">0</b><small>con estudio</small></button>
+        <div class="dato"><span>Revisitas</span><b id="pRev">0</b><small>&nbsp;</small></div>
+        <div class="dato"><span>Días que salió</span><b id="pDias">0</b><small>&nbsp;</small></div>
       </div>
       <div class="botones">
         <button type="button" class="btn morado" id="pInforme">Enviar informe</button>
@@ -353,7 +373,6 @@ button{cursor:pointer}
       <div class="c-lista" id="cLista"></div>
       <button type="button" class="link" id="cVerTerm" hidden></button>
     </section>
-    <div id="slotSincP"></div>
     <section id="pLista" style="display:flex;flex-direction:column;gap:14px" aria-label="Registros de predicación"></section>
   </div>
 </div>
@@ -420,22 +439,27 @@ button{cursor:pointer}
       <label for="fNota">Detalle (opcional)</label>
       <input type="text" id="fNota" maxlength="80" placeholder="Ej.: planilla de luz">
     </div>
-    <div class="campo">
-      <label for="fFecha">Fecha</label>
-      <input type="date" id="fFecha">
-    </div>
-    <div class="campo">
-      <span class="lbl">¿Ya se hizo?</span>
-      <div class="seg" role="group" aria-label="Estado">
-        <button type="button" id="eHecho" aria-pressed="true">Sí, ya</button>
-        <button type="button" id="ePrev" aria-pressed="false">No, falta pagar</button>
+    <details class="opc" id="fOpc">
+      <summary><span><span class="opc-k">Fecha y más opciones</span><span class="opc-v" id="fOpcRes"></span></span><svg class="flecha" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></summary>
+      <div class="dentro">
+        <div class="campo">
+          <label for="fFecha">Fecha</label>
+          <input type="date" id="fFecha">
+        </div>
+        <div class="campo">
+          <span class="lbl">¿Ya se hizo?</span>
+          <div class="seg" role="group" aria-label="Estado">
+            <button type="button" id="eHecho" aria-pressed="true">Sí, ya</button>
+            <button type="button" id="ePrev" aria-pressed="false">No, falta pagar</button>
+          </div>
+        </div>
+        <div class="campo">
+          <span class="lbl">Lo registra</span>
+          <div class="seg" role="group" aria-label="Quién" id="fQuien"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="fFijo"> Se repite cada mes (luz, agua, sueldo…)</label>
       </div>
-    </div>
-    <div class="campo">
-      <span class="lbl">Lo registra</span>
-      <div class="seg" role="group" aria-label="Quién" id="fQuien"></div>
-    </div>
-    <label class="check"><input type="checkbox" id="fFijo"> Se repite cada mes (luz, agua, sueldo…)</label>
+    </details>
     <div class="error" id="fErr" role="alert"></div>
     <div class="botones">
       <button type="button" class="btn ghost" id="fCancelar">Cancelar</button>
@@ -470,24 +494,26 @@ button{cursor:pointer}
       <label for="aMes">¿Desde qué mes?</label>
       <input type="month" id="aMes">
     </div>
-    <div class="campo">
-      <span class="lbl">Topes de gasto al mes (opcional)</span>
-      <p class="ayuda">Deja vacío lo que no quieras controlar. La barra se pone amarilla al llegar al 80 % y roja al pasarse.</p>
-      <div class="topes" id="aTopes"></div>
-    </div>
     <div class="campo"><label for="aN1">Nombre 1</label><input type="text" id="aN1" maxlength="20"></div>
     <div class="campo"><label for="aN2">Nombre 2</label><input type="text" id="aN2" maxlength="20"></div>
     <div class="campo">
       <span class="lbl">En este celular registra</span>
       <div class="seg" role="group" aria-label="Quién usa este celular" id="aYo"></div>
     </div>
+    <details class="opc">
+      <summary><span><span class="opc-k">Opcional</span><span class="opc-v">Topes de gasto al mes</span></span><svg class="flecha" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></summary>
+      <div class="dentro">
+        <p class="ayuda">Deja vacío lo que no quieras controlar. La barra se pone amarilla al llegar al 80 % y roja al pasarse.</p>
+        <div class="topes" id="aTopes"></div>
+      </div>
+    </details>
+    <label class="check"><input type="checkbox" id="aVoz"> Anotar con la voz (botón de micrófono)</label>
+    <p class="ayuda" style="margin-top:-6px">Se aplica al instante y solo en este celular. Si no te funciona bien, desactívalo.</p>
     <div class="error" id="aErr" role="alert"></div>
     <div class="botones">
       <button type="button" class="btn ghost" id="aCancelar">Cancelar</button>
       <button type="submit" class="btn" id="aGuardar">Guardar</button>
     </div>
-    <label class="check"><input type="checkbox" id="aVoz"> Anotar con la voz (botón de micrófono)</label>
-    <p class="ayuda" style="margin-top:-6px">Si no te funciona bien en este celular, desactívalo. Solo afecta a este celular.</p>
     <div class="campo">
       <span class="lbl" id="aVersion">Versión de la app</span>
       <button type="button" class="btn ghost" id="aActualizar">Actualizar la app ahora</button>
@@ -645,7 +671,7 @@ button{cursor:pointer}
 
 <div id="toast" hidden></div>
 
-<script src="voz.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="voz.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

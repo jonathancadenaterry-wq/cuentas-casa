@@ -7,9 +7,9 @@ const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto'
 const DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
 const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
-const money = c => fmt.format((c||0)/100);
+const money = c => (c<0 ? '−' : '')+fmt.format(Math.abs(c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '7';
+const VERSION_APP = '8';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -180,6 +180,7 @@ function render(){
   else if(r.antesDeBase) nota = 'Este mes es anterior al dinero inicial de Ajustes.';
   if(!E.ultRecibo && E.yo!==null) nota += ' Aún sin las cuentas de '+nombre(otro())+'.';
   $('#vFinNota').textContent = nota;
+  $('#ponerBase').hidden = !!E.config.baseMes;
   $('#vHoy').textContent = money(r.hoy);
   $('#vIni').textContent = money(r.ini);
   $('#vIng').textContent = '+ '+money(r.ingH);
@@ -209,6 +210,9 @@ function renderSinc(){
   if(atrasado) lineas.push('<span class="c-warn">Conviene enviarlos: también sirven de respaldo.</span>');
   $('#sincEstado').innerHTML = lineas.map(l=>'<span>'+l+'</span>').join('');
   $('#sinc').classList.toggle('atrasado', atrasado);
+  // Aviso corto arriba solo cuando hace falta enviar
+  $('#recSinc').hidden = !atrasado;
+  $('#recSincTxt').textContent = d===null ? 'Aún no envías tus datos a '+o+'.' : 'Hace '+d+' días que no envías tus datos a '+o+'.';
 }
 
 function idFijo(x, m){ return 'fijo-'+(x.de||x.id)+'-'+m; }
@@ -394,7 +398,18 @@ $('#frec').addEventListener('click', e=>{
   cerrarForm(); render();
   toast((x.nota||catInfo(x.tipo,x.cat).n)+' '+money(x.monto)+' anotado. Tócalo en la lista si hay que corregir algo.');
 });
-function setEstadoF(s){ fEstado=s; $('#eHecho').setAttribute('aria-pressed',s==='hecho'); $('#ePrev').setAttribute('aria-pressed',s==='previsto'); }
+function setEstadoF(s){ fEstado=s; $('#eHecho').setAttribute('aria-pressed',s==='hecho'); $('#ePrev').setAttribute('aria-pressed',s==='previsto'); pintarOpc(); }
+function pintarOpc(){
+  const f = $('#fFecha').value;
+  const partes = [/^\d{4}-\d{2}-\d{2}$/.test(f) ? fechaLarga(f) : 'Sin fecha',
+    fEstado==='previsto' ? (fTipo==='gasto'?'Falta pagar':'Falta cobrar') : (fTipo==='gasto'?'Ya pagado':'Ya cobrado'),
+    nombre(fQuien)];
+  if($('#fFijo').checked) partes.push('Cada mes');
+  $('#fOpcRes').textContent = partes.join(' · ');
+}
+$('#fFecha').addEventListener('change', pintarOpc);
+$('#fFecha').addEventListener('input', pintarOpc);
+$('#fFijo').addEventListener('change', pintarOpc);
 $('#tGasto').onclick=()=>setTipo('gasto');
 $('#tIngreso').onclick=()=>setTipo('ingreso');
 $('#eHecho').onclick=()=>setEstadoF('hecho');
@@ -406,12 +421,14 @@ function abrirForm(tipo, x){
   setTipo(tipo);
   setEstadoF(x ? x.estado : 'hecho');
   fQuien = x ? x.quien : (E.yo||0);
-  const pintQ = ()=>pintarSeg($('#fQuien'), [nombre(0),nombre(1)], fQuien, i=>{ fQuien=i; pintQ(); });
+  const pintQ = ()=>{ pintarSeg($('#fQuien'), [nombre(0),nombre(1)], fQuien, i=>{ fQuien=i; pintQ(); }); pintarOpc(); };
   pintQ();
   $('#fMonto').value = x ? montoTexto(x.monto) : '';
   $('#fNota').value = x ? x.nota : '';
   $('#fFecha').value = x ? x.fecha : (mes===ym(new Date()) ? hoyISO() : mes+'-01');
   $('#fFijo').checked = x ? x.fijo : false;
+  $('#fOpc').open = false;
+  pintarOpc();
   $('#fErr').textContent='';
   mostrarTotal();
   const el = $('#fEliminar'); el.hidden = !x; el.textContent='Eliminar';
@@ -442,7 +459,7 @@ $('#formMov').addEventListener('submit', e=>{
   const fecha = $('#fFecha').value;
   if(!(monto>0)){ $('#fErr').textContent='Escribe un monto mayor que cero, por ejemplo 12,50.'; return; }
   if(!fCat){ $('#fErr').textContent='Elige una categoría.'; return; }
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){ $('#fErr').textContent='Elige la fecha.'; return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha)){ $('#fErr').textContent='Elige la fecha.'; $('#fOpc').open = true; return; }
   const id = editando ? editando.id : nuevoId();
   const eraNuevo = !editando;
   E.movs[id] = {
@@ -497,10 +514,12 @@ async function enviar(){
   if(!compartido){
     descargar(texto, nombreA);
     toast('Archivo guardado en Descargas. Mándalo por WhatsApp a '+nombre(otro())+'.');
-  } else toast('Listo. '+nombre(otro())+' debe tocar «Recibir cuentas».');
+  } else toast('Listo. '+nombre(otro())+' debe tocar «Recibir de '+nombre(E.yo===null?0:E.yo)+'».');
   E.ultEnvio = ahora(); guardar(); render();
 }
 $('#btnEnviar').onclick = enviar;
+$('#recSincBtn').onclick = enviar;
+$('#ponerBase').onclick = ()=>{ abrirAjustes(); setTimeout(()=>$('#aBase').focus(), 80); };
 
 // ---------- Recibir ----------
 function abrirRecibir(){
@@ -541,6 +560,7 @@ function limpiarCurso(v){
   const s = (x,n)=> String(x||'').slice(0,n);
   return {id:v.id, quien:v.quien===1?1:0, nombre:s(v.nombre,40), libro:s(v.libro,80), avance:s(v.avance,160),
     ultima:/^\d{4}-\d{2}-\d{2}$/.test(v.ultima)?v.ultima:'', activo:v.activo!==false,
+    fechas:Array.isArray(v.fechas) ? v.fechas.filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f)).slice(-120) : [],
     creado:Number(v.creado)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
 }
 function importarTexto(texto){
@@ -618,8 +638,8 @@ async function revisarCompartido(){
     const cache = await caches.open('cc-compartido');
     const r = await cache.match('archivo-recibido');
     if(r){ importarTexto(await r.text()); await cache.delete('archivo-recibido'); }
-    else toast('No llegó ningún archivo. Usa «Recibir cuentas».');
-  }catch(e){ toast('No se pudo abrir el archivo compartido. Usa «Recibir cuentas».'); }
+    else toast('No llegó ningún archivo. Usa «Recibir de '+nombre(otro())+'».');
+  }catch(e){ toast('No se pudo abrir el archivo compartido. Usa «Recibir de '+nombre(otro())+'».'); }
 }
 
 // ---------- Primer uso ----------
@@ -664,6 +684,7 @@ function abrirAjustes(){
   $('#veloAj').hidden=false;
 }
 $('#btnAjustes').onclick=abrirAjustes;
+$('#aVoz').addEventListener('change', ()=>{ E.voz = $('#aVoz').checked; guardar(); aplicarVoz(); toast(E.voz ? 'Micrófono activado' : 'Micrófono desactivado'); });
 $('#aCancelar').onclick=()=>$('#veloAj').hidden=true;
 $('#veloAj').addEventListener('click', e=>{ if(e.target.id==='veloAj') $('#veloAj').hidden=true; });
 $('#formAj').addEventListener('submit', e=>{
@@ -683,8 +704,6 @@ $('#formAj').addEventListener('submit', e=>{
   const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|') || JSON.stringify(topes)!==JSON.stringify(E.config.topes||{});
   if(cambio) E.config = {base, baseMes, nombres, topes, mod:ahora()};
   E.yo = aYo; verQuien = aYo;
-  E.voz = $('#aVoz').checked;
-  aplicarVoz();
   if(!guardar()) return;
   $('#veloAj').hidden=true; toast('Ajustes guardados'); render();
 });
@@ -698,7 +717,11 @@ function fmtMin(t){
   if(!h) return mi ? mi+' min' : '0 h';
   return h+' h'+(mi?' '+mi+' min':'');
 }
-const cursosDe = (q,m) => (E.predMes[m+'|'+q]||{}).cursos||0;
+// Cursos con al menos un estudio anotado en el mes (se cuentan solos desde la lista).
+// Si ese mes no hay ninguno en la lista, se usa el número que se anotaba a mano en versiones anteriores.
+const fechasCurso = c => Array.isArray(c.fechas) && c.fechas.length ? c.fechas : (c.ultima ? [c.ultima] : []);
+const cursosDelMes = (q,m) => Object.values(E.cursos).filter(c=>!c.borrado && c.quien===q && fechasCurso(c).some(f=>f.slice(0,7)===m));
+const cursosDe = (q,m) => { const n = cursosDelMes(q,m).length; return n || (E.predMes[m+'|'+q]||{}).cursos || 0; };
 const metaDe = q => (E.predCfg.metas[String(q)]||{}).min||0;
 function resumenPred(q,m){
   const rs = predDe(q,m);
@@ -721,8 +744,6 @@ function renderPred(){
   $('#pCursos').textContent = r.cursos;
   $('#pRev').textContent = r.rev;
   $('#pDias').textContent = r.dias;
-  $('#pCurMenos').disabled = !propio || r.cursos<=0;
-  $('#pCurMas').disabled = !propio;
   $('#pMetaBtn').hidden = !propio;
   $('#accPred').hidden = E.tab!=='pred' || !propio;
   // Meta
@@ -780,11 +801,11 @@ function renderCursos(propio){
   const term = todos.filter(c=>!c.activo).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   $('#cTit').textContent = propio ? 'Mis cursos bíblicos' : 'Cursos bíblicos de '+nombre(q);
   $('#cNuevo').hidden = !propio;
-  const act = ym(new Date());
-  const esteMes = activos.filter(c=>c.ultima && c.ultima.slice(0,7)===act).length;
+  const delMes = cursosDelMes(q, mes).length;
+  const mesN = MESES[Number(mes.split('-')[1])-1];
   $('#cInfo').textContent = activos.length
-    ? activos.length+(activos.length===1?' curso activo':' cursos activos')+(mes===act ? ' · '+esteMes+' con estudio este mes' : '')+'.'
-    : '';
+    ? activos.length+(activos.length===1?' curso activo':' cursos activos')+' · '+delMes+' con estudio en '+mesN+'. Cada vez que anotas un estudio, se cuenta solo para el informe.'
+    : (propio ? 'Los cursos con estudio anotado en el mes se cuentan solos para el informe.' : '');
   const mostrar = verTerminados ? term : activos;
   const card = c=>{
     const dd = diasDesde(c.ultima);
@@ -834,8 +855,12 @@ $('#formCurso').addEventListener('submit', e=>{
   if(!nombreC){ $('#cErr').textContent = 'Escribe el nombre de la persona.'; return; }
   const f = $('#cFecha').value;
   const id = cEdit ? cEdit.id : nuevoId();
+  const valida = /^\d{4}-\d{2}-\d{2}$/.test(f);
+  const fechas = cEdit ? [...fechasCurso(cEdit)] : [];
+  if(valida && !fechas.includes(f)) fechas.push(f);
+  fechas.sort();
   E.cursos[id] = {id, quien:(E.yo===null?0:E.yo), nombre:nombreC.slice(0,40), libro:$('#cLibro').value.trim().slice(0,80),
-    avance:$('#cAvance').value.trim().slice(0,160), ultima:/^\d{4}-\d{2}-\d{2}$/.test(f)?f:'',
+    avance:$('#cAvance').value.trim().slice(0,160), ultima:valida?f:'', fechas:fechas.slice(-120),
     activo: cEdit ? cEdit.activo : true, creado: cEdit ? cEdit.creado : ahora(), mod:ahora(), borrado:false};
   const nuevo = !cEdit;
   if(!guardar()) return;
@@ -859,14 +884,7 @@ $('#pLista').addEventListener('click', e=>{
   const b = e.target.closest('[data-pid]'); if(!b) return;
   const x = E.pred[b.dataset.pid]; if(x) abrirPred(x);
 });
-function cambiarCursos(d){
-  const q = E.yo===null?0:E.yo, k = mes+'|'+q;
-  const v = Math.max(0, Math.min(99, cursosDe(q,mes)+d));
-  E.predMes[k] = {cursos:v, mod:ahora()};
-  guardar(); renderPred();
-}
-$('#pCurMas').onclick = ()=>cambiarCursos(1);
-$('#pCurMenos').onclick = ()=>cambiarCursos(-1);
+$('#pCursosBtn').onclick = ()=>{ verTerminados = false; renderPred(); $('#cBloque').scrollIntoView({behavior:'smooth', block:'start'}); };
 
 // Formulario de predicación
 let pEdit = null, pRev = 0, pBorrar = false;
@@ -986,7 +1004,7 @@ function aplicarTab(){
   $('#tabBtnC').setAttribute('aria-selected', String(!p));
   $('#tabBtnP').setAttribute('aria-selected', String(p));
   $('#titulo').textContent = p ? 'Predicación' : 'Cuentas de la casa';
-  if(p) $('#slotSincP').appendChild($('#sinc')); else $('#tabCuentas').insertBefore($('#sinc'), $('#fijos'));
+  (p ? $('#tabPred') : $('#tabCuentas')).appendChild($('#sinc'));
   renderPred();
 }
 function setTab(t){ E.tab = t; guardar(); aplicarTab(); window.scrollTo(0,0); }
@@ -1164,7 +1182,7 @@ $('#vCorregir').onclick = ()=>{
     abrirForm(r.tipo);
     fCat = r.cat; pintarCats();
     $('#fMonto').value = r.monto ? montoTexto(r.monto) : '';
-    $('#fNota').value = r.nota||''; $('#fFecha').value = r.fecha; setEstadoF(r.estado);
+    $('#fNota').value = r.nota||''; $('#fFecha').value = r.fecha; setEstadoF(r.estado); pintarOpc();
   }
 };
 aplicarVoz();
@@ -1185,6 +1203,24 @@ try{
   const vPag = (document.querySelector('meta[name="app-version"]')||{}).content;
   if(vPag && vPag!==VERSION_APP && !sessionStorage.getItem('cc_reparo')){ sessionStorage.setItem('cc_reparo','1'); actualizarApp(); }
 }catch(e){}
+
+// ---------- Botón «Atrás» ----------
+const velos = [...document.querySelectorAll('.velo')];
+let hojaEnHistorial = false, ignorarPop = false;
+new MutationObserver(()=>{
+  const abierta = velos.some(v=>!v.hidden);
+  if(abierta && !hojaEnHistorial){ try{ history.pushState({hoja:1}, ''); hojaEnHistorial = true; }catch(e){} }
+  else if(!abierta && hojaEnHistorial){ hojaEnHistorial = false; ignorarPop = true; try{ history.back(); }catch(e){ ignorarPop = false; } }
+}).observe(document.body, {subtree:true, attributes:true, attributeFilter:['hidden']});
+window.addEventListener('popstate', ()=>{
+  if(ignorarPop){ ignorarPop = false; return; }
+  const v = velos.filter(x=>!x.hidden).pop();
+  if(!v){ hojaEnHistorial = false; return; }
+  hojaEnHistorial = false;
+  if(v.id==='veloInicio'){ try{ history.pushState({hoja:1}, ''); hojaEnHistorial = true; }catch(e){} return; }
+  v.dispatchEvent(new MouseEvent('click', {bubbles:true}));   // usa el mismo cierre que tocar afuera
+  if(!v.hidden) v.hidden = true;
+});
 
 // ---------- Arranque ----------
 cargar();
