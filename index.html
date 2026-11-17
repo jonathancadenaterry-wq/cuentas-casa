@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F6E8C">
-<meta name="app-version" content="6">
+<meta name="app-version" content="7">
 <meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
 <title>Cuentas de la casa</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -172,7 +172,10 @@ button{cursor:pointer}
 .icon-btn[hidden]{display:none}
 .tab{display:flex;flex-direction:column;gap:14px}
 .tab[hidden]{display:none}
-.acc{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acc{display:flex;gap:10px}
+.acc > button{flex:1 1 0}
+.acc > .mic{flex:0 0 58px}
+:root:not(#z) .acciones .mic[hidden], .mic[hidden]{display:none}
 .acc[hidden]{display:none}
 #accPred{grid-template-columns:1fr}
 .acciones .p{background:var(--pred)}
@@ -223,6 +226,21 @@ button{cursor:pointer}
 .fecha-fila{display:grid;grid-template-columns:1fr auto;gap:8px}
 .fecha-fila button{border:1px solid var(--pred);background:var(--pred-soft);border-radius:12px;padding:0 16px;font-weight:700}
 #cAvance{min-height:72px;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;font:inherit;resize:vertical}
+:root:not(#z) .acciones .mic{background:var(--surface);border:1px solid var(--line);color:var(--ink);padding:0;display:grid;place-items:center}
+.mic svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.escucha{display:flex;align-items:center;gap:10px;font-weight:700;font-size:.95rem;color:var(--muted)}
+.escucha.activa{color:var(--out)}
+.pulso{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none}
+.escucha.activa .pulso{background:var(--out)}
+@media (prefers-reduced-motion: no-preference){.escucha.activa .pulso{animation:late 1s ease-in-out infinite}@keyframes late{50%{transform:scale(1.5);opacity:.5}}}
+#vTexto{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;min-height:76px;font:inherit;font-size:1.05rem;resize:vertical}
+.v-res{border:2px solid var(--accent);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--accent-soft)}
+.v-res.pd{border-color:var(--pred);background:var(--pred-soft)}
+.v-res[hidden]{display:none}
+.v-res .v-k{font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.v-res .v-big{font-family:var(--font-display);font-size:1.9rem;line-height:1.1}
+.v-res .v-lin{font-size:.95rem}
+.v-res .v-falta{color:var(--out);font-weight:700;font-size:.92rem}
 </style>
 </head>
 <body>
@@ -342,10 +360,12 @@ button{cursor:pointer}
 
 <div class="acciones"><div class="in">
   <div class="acc" id="accCuentas">
+    <button type="button" class="mic" data-mic aria-label="Anotar con la voz"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
     <button class="g" id="addGasto">− Gasto</button>
     <button class="i" id="addIngreso">+ Ingreso</button>
   </div>
   <div class="acc" id="accPred" hidden>
+    <button type="button" class="mic" data-mic aria-label="Anotar con la voz"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button>
     <button class="p" id="addPred">+ Anotar predicación</button>
   </div>
   <nav class="tabs" role="tablist" aria-label="Secciones">
@@ -466,6 +486,8 @@ button{cursor:pointer}
       <button type="button" class="btn ghost" id="aCancelar">Cancelar</button>
       <button type="submit" class="btn" id="aGuardar">Guardar</button>
     </div>
+    <label class="check"><input type="checkbox" id="aVoz"> Anotar con la voz (botón de micrófono)</label>
+    <p class="ayuda" style="margin-top:-6px">Si no te funciona bien en este celular, desactívalo. Solo afecta a este celular.</p>
     <div class="campo">
       <span class="lbl" id="aVersion">Versión de la app</span>
       <button type="button" class="btn ghost" id="aActualizar">Actualizar la app ahora</button>
@@ -549,6 +571,26 @@ button{cursor:pointer}
   </form>
 </div>
 
+<!-- Voz -->
+<div class="velo" id="veloVoz" hidden>
+  <div class="hoja">
+    <h3>Dímelo con tu voz</h3>
+    <div class="escucha" id="vEstado"><span class="pulso"></span><span id="vEstadoTxt">Escuchando… habla ahora</span></div>
+    <textarea id="vTexto" aria-label="Lo que dijiste" placeholder="Ej.: gasté 15 dólares en compras"></textarea>
+    <p class="ayuda">Ejemplos: «gasté 15 con 50 en compras», «ayer pagué 20 en la farmacia», «cobré 120 del spa», «prediqué dos horas y media con tres revisitas».</p>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="vHablar">Hablar otra vez</button>
+      <button type="button" class="btn" id="vEntender">Entender</button>
+    </div>
+    <div class="v-res" id="vRes" hidden></div>
+    <div class="botones" id="vAcciones" hidden>
+      <button type="button" class="btn ghost" id="vCorregir">Corregir</button>
+      <button type="button" class="btn" id="vGuardar">Guardar</button>
+    </div>
+    <button type="button" class="btn ghost" id="vCerrar">Cancelar</button>
+  </div>
+</div>
+
 <!-- Informe -->
 <div class="velo" id="veloInforme" hidden>
   <div class="hoja">
@@ -603,6 +645,7 @@ button{cursor:pointer}
 
 <div id="toast" hidden></div>
 
-<script src="app.js?v=6"></script>
+<script src="voz.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

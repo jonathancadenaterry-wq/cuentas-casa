@@ -9,7 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => fmt.format((c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '6';
+const VERSION_APP = '7';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -23,6 +23,7 @@ const CATS = {
     {id:'ropa',n:'Ropa',c:'#B8892E'},
     {id:'deudas',n:'Deudas y cuotas',c:'#C0392B'},
     {id:'trabajo',n:'Trabajo / negocio',c:'#476A8A'},
+    {id:'spa',n:'Spa',c:'#B5651D'},
     {id:'gustos',n:'Salidas y gustos',c:'#E0609A'},
     {id:'otros',n:'Otros',c:'#7D8A96'}
   ],
@@ -659,6 +660,7 @@ function abrirAjustes(){
   pint();
   $('#aN1').oninput = pint; $('#aN2').oninput = pint;
   $('#aErr').textContent='';
+  $('#aVoz').checked = E.voz!==false;
   $('#veloAj').hidden=false;
 }
 $('#btnAjustes').onclick=abrirAjustes;
@@ -681,6 +683,8 @@ $('#formAj').addEventListener('submit', e=>{
   const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|') || JSON.stringify(topes)!==JSON.stringify(E.config.topes||{});
   if(cambio) E.config = {base, baseMes, nombres, topes, mod:ahora()};
   E.yo = aYo; verQuien = aYo;
+  E.voz = $('#aVoz').checked;
+  aplicarVoz();
   if(!guardar()) return;
   $('#veloAj').hidden=true; toast('Ajustes guardados'); render();
 });
@@ -1039,6 +1043,132 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
 }
 
+// ---------- Anotar con la voz ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, vRes = null, oyendo = false;
+function aplicarVoz(){ document.querySelectorAll('[data-mic]').forEach(b=>b.hidden = (E.voz===false)); }
+function vEstado(txt, activo){ $('#vEstadoTxt').textContent = txt; $('#vEstado').classList.toggle('activa', !!activo); }
+function vLimpiarRes(){ vRes = null; $('#vRes').hidden = true; $('#vAcciones').hidden = true; }
+function abrirVoz(){
+  $('#vTexto').value = ''; vLimpiarRes();
+  $('#veloVoz').hidden = false;
+  escuchar();
+}
+function escuchar(intentoLang){
+  if(!SR){
+    vEstado('En este celular la app no puede escuchar directamente. Toca el micrófono de tu teclado y dicta aquí.', false);
+    setTimeout(()=>$('#vTexto').focus(), 60);
+    return;
+  }
+  try{ if(rec) rec.abort(); }catch(e){}
+  vLimpiarRes();
+  rec = new SR();
+  rec.lang = intentoLang || 'es-EC';
+  rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  let final = '', hubo = false;
+  rec.onresult = ev=>{
+    let interino = '';
+    for(let i=ev.resultIndex; i<ev.results.length; i++){
+      const tx = ev.results[i][0].transcript;
+      if(ev.results[i].isFinal) final += tx; else interino += tx;
+    }
+    hubo = true;
+    $('#vTexto').value = (final+' '+interino).trim();
+  };
+  rec.onerror = ev=>{
+    oyendo = false;
+    const e = ev && ev.error;
+    if(e==='language-not-supported' && !intentoLang){ escuchar('es-ES'); return; }
+    const msj = {
+      'not-allowed':'La app no tiene permiso del micrófono. Permítelo en los ajustes del navegador, o dicta con el micrófono del teclado.',
+      'service-not-allowed':'Este celular no deja usar el reconocimiento de voz. Dicta con el micrófono del teclado.',
+      'no-speech':'No te escuché. Toca «Hablar otra vez».',
+      'audio-capture':'No se encontró el micrófono.',
+      'network':'Para escuchar se necesita internet. Sin internet, dicta con el micrófono del teclado.',
+      'aborted':''
+    }[e];
+    vEstado(msj===undefined ? 'No se pudo escuchar. Prueba otra vez o escribe aquí.' : msj, false);
+  };
+  rec.onend = ()=>{
+    oyendo = false;
+    if(hubo && $('#vTexto').value.trim()){ vEstado('Listo. Revisa lo que entendí.', false); entender(); }
+    else if($('#vEstado').classList.contains('activa')) vEstado('No te escuché. Toca «Hablar otra vez».', false);
+  };
+  try{ rec.start(); oyendo = true; vEstado('Escuchando… habla ahora', true); }
+  catch(e){ vEstado('No se pudo iniciar el micrófono. Escribe o dicta con el teclado.', false); }
+}
+function entender(){
+  const texto = $('#vTexto').value.trim();
+  if(!texto){ vEstado('Primero di o escribe qué anotar.', false); return; }
+  const r = self.CCVoz ? self.CCVoz.interpretar(texto, {tab:E.tab}) : null;
+  vRes = r;
+  const box = $('#vRes'); box.classList.toggle('pd', !!r && r.tipo==='pred');
+  let html = '', puede = false;
+  if(!r || !r.tipo){
+    html = '<div class="v-falta">No entendí si es un gasto, un ingreso o predicación.</div><div class="v-lin">Prueba con algo como «gasté 10 en compras» o «prediqué dos horas».</div>';
+  } else if(r.tipo==='pred'){
+    puede = r.min>0 || r.rev>0;
+    html = '<div class="v-k">Predicación de '+esc(nombre(E.yo===null?0:E.yo))+'</div>'+
+      '<div class="v-big" style="color:var(--pred)">'+esc(r.min?fmtMin(r.min):'Sin tiempo')+'</div>'+
+      (r.rev?'<div class="v-lin">'+r.rev+(r.rev===1?' revisita':' revisitas')+'</div>':'')+
+      '<div class="v-lin">'+esc(fechaCompleta(r.fecha))+'</div>'+
+      (puede?'':'<div class="v-falta">No entendí el tiempo. Toca «Corregir» para escribirlo.</div>');
+  } else {
+    puede = !!r.monto;
+    const ci = catInfo(r.tipo, r.cat);
+    html = '<div class="v-k">'+(r.tipo==='gasto'?'Gasto':'Ingreso')+'</div>'+
+      '<div class="v-big '+(r.tipo==='gasto'?'c-out':'c-in')+'">'+(r.monto?(r.tipo==='gasto'?'− ':'+ ')+money(r.monto):'Sin monto')+'</div>'+
+      '<div class="v-lin"><b>'+esc(ci.n)+'</b>'+(r.nota && r.nota!==ci.n?' · '+esc(r.nota):'')+'</div>'+
+      '<div class="v-lin">'+esc(fechaCompleta(r.fecha))+'</div>'+
+      '<div class="v-lin">'+(r.estado==='previsto'?(r.tipo==='gasto'?'Falta pagar (previsto)':'Falta cobrar (previsto)'):(r.tipo==='gasto'?'Ya pagado':'Ya cobrado'))+'</div>'+
+      (r.cat==='otros'||r.cat==='otros_in'?'<div class="v-falta">No reconocí la categoría: quedará en «Otros». Toca «Corregir» si quieres cambiarla.</div>':'')+
+      (puede?'':'<div class="v-falta">No entendí el monto. Toca «Corregir» para escribirlo.</div>');
+  }
+  box.innerHTML = html; box.hidden = false;
+  $('#vAcciones').hidden = !(r && r.tipo);
+  $('#vGuardar').disabled = !puede;
+}
+function cerrarVoz(){ try{ if(rec) rec.abort(); }catch(e){} $('#veloVoz').hidden = true; vLimpiarRes(); }
+document.querySelectorAll('[data-mic]').forEach(b=>b.onclick = abrirVoz);
+$('#vHablar').onclick = ()=>escuchar();
+$('#vEntender').onclick = entender;
+$('#vTexto').addEventListener('input', ()=>{ if(vRes) vLimpiarRes(); });
+$('#vCerrar').onclick = cerrarVoz;
+$('#veloVoz').addEventListener('click', e=>{ if(e.target.id==='veloVoz') cerrarVoz(); });
+$('#vGuardar').onclick = ()=>{
+  const r = vRes; if(!r || !r.tipo) return;
+  const q = E.yo===null?0:E.yo, id = nuevoId();
+  if(r.tipo==='pred'){
+    E.pred[id] = {id, quien:q, fecha:r.fecha, mes:r.fecha.slice(0,7), min:r.min, rev:r.rev, nota:r.nota||'', creado:ahora(), mod:ahora(), borrado:false};
+  } else {
+    E.movs[id] = {id, tipo:r.tipo, monto:r.monto, cat:r.cat, nota:r.nota||'', fecha:r.fecha, mes:r.fecha.slice(0,7), estado:r.estado,
+      quien:q, fijo:false, de:null, creado:ahora(), mod:ahora(), borrado:false};
+  }
+  if(!guardar()) return;
+  pedirPersistencia();
+  mes = r.fecha.slice(0,7);
+  if(r.tipo==='pred'){ verQuien = q; E.tab = 'pred'; } else E.tab = 'cuentas';
+  guardar(); cerrarVoz(); render(); aplicarTab();
+  toast(r.tipo==='pred' ? 'Anotado: '+(r.min?fmtMin(r.min):'')+(r.rev?(r.min?' y ':'')+r.rev+(r.rev===1?' revisita':' revisitas'):'') : 'Anotado: '+money(r.monto)+' en '+catInfo(r.tipo,r.cat).n);
+};
+$('#vCorregir').onclick = ()=>{
+  const r = vRes; if(!r || !r.tipo) return;
+  cerrarVoz();
+  mes = r.fecha.slice(0,7);
+  if(r.tipo==='pred'){
+    E.tab = 'pred'; verQuien = E.yo===null?0:E.yo; guardar(); render(); aplicarTab();
+    abrirPred();
+    $('#pFecha').value = r.fecha; pintarFechaTxt(); ponerTiempo(r.min||0); pRev = r.rev||0; pintarRev(); $('#pNota').value = r.nota||'';
+  } else {
+    E.tab = 'cuentas'; guardar(); render(); aplicarTab();
+    abrirForm(r.tipo);
+    fCat = r.cat; pintarCats();
+    $('#fMonto').value = r.monto ? montoTexto(r.monto) : '';
+    $('#fNota').value = r.nota||''; $('#fFecha').value = r.fecha; setEstadoF(r.estado);
+  }
+};
+aplicarVoz();
+
 // ---------- Actualizar ----------
 async function actualizarApp(){
   try{
@@ -1061,6 +1191,7 @@ cargar();
 if(!almacenamientoOk) aviso('Este navegador no deja guardar datos. Abre la app en Chrome, fuera del modo incógnito.', true);
 render();
 aplicarTab();
+aplicarVoz();
 if(E.yo===null) abrirInicio();
 revisarCompartido();
 })();
