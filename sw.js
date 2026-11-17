@@ -1,6 +1,6 @@
 /* Guarda la app en el celular para que abra sin internet,
    y recibe el archivo que se comparte desde WhatsApp. */
-const VERSION = 'cc-v4';
+const VERSION = 'cc-v5';
 const ARCHIVOS = ['./', './index.html', './app.js', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 
 self.addEventListener('install', e => {

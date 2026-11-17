@@ -98,6 +98,7 @@ let E = {
   pred:{},                     // id -> registro de predicación (cada uno es de una persona: quien)
   predMes:{},                  // "2026-11|0" -> {cursos, mod}
   predCfg:{metas:{}},          // "0" -> {min, mod}
+  cursos:{},                   // id -> curso bíblico (de una persona: quien)
   tab:'cuentas'
 };
 let almacenamientoOk = true;
@@ -112,6 +113,7 @@ function cargar(){
   if(!E.pred || typeof E.pred!=='object') E.pred = {};
   if(!E.predMes || typeof E.predMes!=='object') E.predMes = {};
   if(!E.predCfg || typeof E.predCfg!=='object' || !E.predCfg.metas) E.predCfg = {metas:{}};
+  if(!E.cursos || typeof E.cursos!=='object') E.cursos = {};
 }
 function guardar(){
   try{ localStorage.setItem(CLAVE, JSON.stringify(E)); return true; }
@@ -469,7 +471,7 @@ function nombreArchivo(){
 function paquete(){
   return {app:APP, v:1, de:nombre(E.yo||0), quien:E.yo, dispositivo:E.dispositivo, generado:new Date().toISOString(),
     config:E.config, movs:Object.values(E.movs),
-    pred:Object.values(E.pred), predMes:E.predMes, predCfg:E.predCfg};
+    pred:Object.values(E.pred), predMes:E.predMes, predCfg:E.predCfg, cursos:Object.values(E.cursos)};
 }
 function descargar(texto, nombreA){
   const url = URL.createObjectURL(new Blob([texto],{type:'text/plain'}));
@@ -532,6 +534,13 @@ function limpiarPred(v){
   return {id:v.id, quien:v.quien===1?1:0, fecha:v.fecha, mes:v.fecha.slice(0,7), min:n(v.min,1440), rev:n(v.rev,999),
     nota:String(v.nota||'').slice(0,80), creado:Number(v.creado)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
 }
+function limpiarCurso(v){
+  if(!v || typeof v!=='object' || typeof v.id!=='string' || !v.id || v.id.length>80) return null;
+  const s = (x,n)=> String(x||'').slice(0,n);
+  return {id:v.id, quien:v.quien===1?1:0, nombre:s(v.nombre,40), libro:s(v.libro,80), avance:s(v.avance,160),
+    ultima:/^\d{4}-\d{2}-\d{2}$/.test(v.ultima)?v.ultima:'', activo:v.activo!==false,
+    creado:Number(v.creado)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
+}
 function importarTexto(texto){
   let p;
   try{ p = JSON.parse(texto); }catch(e){ toast('Ese archivo no es de Cuentas de la casa.'); return false; }
@@ -576,6 +585,13 @@ function importarTexto(texto){
     const loc = E.predCfg.metas[q];
     if(!loc || mod > (loc.mod||0)) E.predCfg.metas[q] = {min, mod};
   }
+  let cNuevos=0, cCambios=0;
+  if(Array.isArray(p.cursos)) for(const crudo of p.cursos){
+    const v = limpiarCurso(crudo); if(!v) continue;
+    const loc = E.cursos[v.id];
+    if(!loc){ E.cursos[v.id]=v; if(!v.borrado) cNuevos++; }
+    else if(v.mod > (loc.mod||0)){ E.cursos[v.id]=v; cCambios++; }
+  }
   E.ultRecibo = {de:String(p.de||'').slice(0,20), generado:String(p.generado||''), cuando:ahora()};
   if(!guardar()) return false;
   pedirPersistencia();
@@ -587,6 +603,7 @@ function importarTexto(texto){
   const msj = [];
   if(partes.length) msj.push('Cuentas: '+partes.join(', '));
   if(pNuevos || pCambios) msj.push('Predicación: '+[pNuevos?pNuevos+(pNuevos===1?' registro nuevo':' registros nuevos'):'', pCambios?pCambios+(pCambios===1?' cambio':' cambios'):''].filter(Boolean).join(', '));
+  if(cNuevos || cCambios) msj.push('Cursos bíblicos: '+[cNuevos?cNuevos+(cNuevos===1?' nuevo':' nuevos'):'', cCambios?cCambios+(cCambios===1?' actualizado':' actualizados'):''].filter(Boolean).join(', '));
   toast(msj.length ? 'Datos juntados. '+msj.join('. ')+'.' : 'Ya estaban al día. No había nada nuevo.');
   return true;
 }
@@ -673,7 +690,7 @@ const predDe = (q,m) => Object.values(E.pred).filter(x=>!x.borrado && x.quien===
 function fmtMin(t){
   t = Math.max(0, Math.round(t||0));
   const h = Math.floor(t/60), mi = t%60;
-  if(!h) return mi+' min';
+  if(!h) return mi ? mi+' min' : '0 h';
   return h+' h'+(mi?' '+mi+' min':'');
 }
 const cursosDe = (q,m) => (E.predMes[m+'|'+q]||{}).cursos||0;
@@ -727,6 +744,7 @@ function renderPred(){
     txt = propio ? 'Sin meta de horas. Puedes activarla abajo si la necesitas.' : '';
   }
   $('#pMetaTxt').innerHTML = txt;
+  renderCursos(propio);
   // Lista
   const box = $('#pLista');
   if(!r.rs.length){
@@ -742,6 +760,96 @@ function renderPred(){
     return '<'+tag+' class="mov"'+(propio?' data-pid="'+esc(x.id)+'"':'')+'><span class="dot pd"></span><span><div class="t">'+esc(x.nota || (x.min ? 'Predicación' : 'Solo revisitas'))+'</div>'+(det?'<div class="s">'+det+'</div>':'')+'</span><span class="m num" style="color:var(--pred)">'+esc(x.min?fmtMin(x.min):'')+'</span></'+tag+'>';
   }).join('')+'</div>').join('');
 }
+// ---------- Cursos bíblicos ----------
+let verTerminados = false, cEdit = null, cBorrar = false;
+const cursosDeQ = q => Object.values(E.cursos).filter(c=>!c.borrado && c.quien===q);
+function diasDesde(iso){
+  if(!iso) return null;
+  const [y,m,d] = iso.split('-').map(Number);
+  return haceDias(new Date(y,m-1,d).getTime());
+}
+function renderCursos(propio){
+  const q = verQuien;
+  const todos = cursosDeQ(q);
+  const activos = todos.filter(c=>c.activo).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const term = todos.filter(c=>!c.activo).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  $('#cTit').textContent = propio ? 'Mis cursos bíblicos' : 'Cursos bíblicos de '+nombre(q);
+  $('#cNuevo').hidden = !propio;
+  const act = ym(new Date());
+  const esteMes = activos.filter(c=>c.ultima && c.ultima.slice(0,7)===act).length;
+  $('#cInfo').textContent = activos.length
+    ? activos.length+(activos.length===1?' curso activo':' cursos activos')+(mes===act ? ' · '+esteMes+' con estudio este mes' : '')+'.'
+    : '';
+  const mostrar = verTerminados ? term : activos;
+  const card = c=>{
+    const dd = diasDesde(c.ultima);
+    const cuando = !c.ultima ? 'sin fecha' : dd<=0 ? 'hoy' : dd===1 ? 'ayer' : 'hace '+dd+' días · '+fechaLarga(c.ultima);
+    const tag = propio ? 'button' : 'div';
+    return '<'+tag+' class="curso'+(c.activo?'':' term')+'"'+(propio?' type="button" data-cid="'+esc(c.id)+'"':'')+'>'+
+      '<div class="c-nom">'+esc(c.nombre)+'</div>'+
+      (c.libro?'<div class="c-lin"><span class="c-k">Libro</span>'+esc(c.libro)+'</div>':'')+
+      (c.avance?'<div class="c-lin"><span class="c-k">Quedamos en</span>'+esc(c.avance)+'</div>':'')+
+      '<div class="c-ult'+(c.activo && dd!==null && dd>14?' tarde':'')+'">Última vez: '+esc(cuando)+'</div></'+tag+'>';
+  };
+  $('#cLista').innerHTML = mostrar.length ? mostrar.map(card).join('')
+    : '<div class="vacio" style="padding:12px">'+(verTerminados ? 'No hay cursos terminados.' : (propio ? 'Aún no hay cursos anotados. Toca <b>+ Nuevo</b> para agregar el primero.' : 'Aún no llegan los cursos de '+esc(nombre(q))+'.'))+'</div>';
+  const vt = $('#cVerTerm');
+  if(verTerminados){ vt.hidden = false; vt.textContent = '← Volver a los cursos activos'; }
+  else { vt.hidden = !term.length; vt.textContent = 'Ver terminados ('+term.length+')'; }
+}
+$('#cVerTerm').onclick = ()=>{ verTerminados = !verTerminados; renderPred(); };
+$('#cLista').addEventListener('click', e=>{ const b=e.target.closest('[data-cid]'); if(!b) return; const c=E.cursos[b.dataset.cid]; if(c) abrirCurso(c); });
+function pintarCFecha(){ const f=$('#cFecha').value; $('#cFechaTxt').textContent = /^\d{4}-\d{2}-\d{2}$/.test(f) ? fechaCompleta(f) : 'Sin fecha'; }
+function abrirCurso(c){
+  cEdit = c || null; cBorrar = false;
+  $('#cFormTit').textContent = c ? 'Curso con '+c.nombre : 'Nuevo curso bíblico';
+  $('#cNombre').value = c ? c.nombre : '';
+  $('#cLibro').value = c ? c.libro : '';
+  $('#cAvance').value = c ? c.avance : '';
+  $('#cFecha').value = c ? c.ultima : hoyISO();
+  pintarCFecha();
+  const libros = [...new Set(Object.values(E.cursos).filter(x=>!x.borrado && x.libro).map(x=>x.libro))];
+  $('#cLibros').innerHTML = libros.map(l=>'<option value="'+esc(l)+'"></option>').join('');
+  $('#cErr').textContent = '';
+  const t = $('#cTerminar'); t.hidden = !c; t.textContent = c && !c.activo ? 'Volver a cursos activos' : 'Marcar como terminado';
+  const el = $('#cEliminar'); el.hidden = !(c && !c.activo); el.textContent = 'Eliminar';
+  $('#veloCurso').hidden = false;
+  setTimeout(()=>$(c ? '#cAvance' : '#cNombre').focus(), 60);
+}
+function cerrarCurso(){ $('#veloCurso').hidden = true; cEdit = null; }
+$('#cNuevo').onclick = ()=>abrirCurso();
+$('#cCancelar').onclick = cerrarCurso;
+$('#veloCurso').addEventListener('click', e=>{ if(e.target.id==='veloCurso') cerrarCurso(); });
+$('#cHoy').onclick = ()=>{ $('#cFecha').value = hoyISO(); pintarCFecha(); };
+$('#cFecha').addEventListener('input', pintarCFecha);
+$('#cFecha').addEventListener('change', pintarCFecha);
+$('#formCurso').addEventListener('submit', e=>{
+  e.preventDefault();
+  const nombreC = $('#cNombre').value.trim();
+  if(!nombreC){ $('#cErr').textContent = 'Escribe el nombre de la persona.'; return; }
+  const f = $('#cFecha').value;
+  const id = cEdit ? cEdit.id : nuevoId();
+  E.cursos[id] = {id, quien:(E.yo===null?0:E.yo), nombre:nombreC.slice(0,40), libro:$('#cLibro').value.trim().slice(0,80),
+    avance:$('#cAvance').value.trim().slice(0,160), ultima:/^\d{4}-\d{2}-\d{2}$/.test(f)?f:'',
+    activo: cEdit ? cEdit.activo : true, creado: cEdit ? cEdit.creado : ahora(), mod:ahora(), borrado:false};
+  const nuevo = !cEdit;
+  if(!guardar()) return;
+  pedirPersistencia();
+  cerrarCurso(); renderPred(); toast(nuevo ? 'Curso agregado' : 'Avance guardado');
+});
+$('#cTerminar').onclick = ()=>{
+  if(!cEdit) return;
+  const c = E.cursos[cEdit.id]; c.activo = !c.activo; c.mod = ahora(); guardar();
+  const msg = c.activo ? 'El curso volvió a la lista' : 'Curso marcado como terminado';
+  cerrarCurso(); renderPred(); toast(msg);
+};
+$('#cEliminar').onclick = ()=>{
+  if(!cEdit) return;
+  if(!cBorrar){ cBorrar = true; $('#cEliminar').textContent = 'Toca otra vez para eliminar'; return; }
+  const c = E.cursos[cEdit.id]; c.borrado = true; c.mod = ahora(); guardar();
+  cerrarCurso(); renderPred(); toast('Curso eliminado');
+};
+
 $('#pLista').addEventListener('click', e=>{
   const b = e.target.closest('[data-pid]'); if(!b) return;
   const x = E.pred[b.dataset.pid]; if(x) abrirPred(x);

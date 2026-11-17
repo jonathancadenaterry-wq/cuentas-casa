@@ -207,6 +207,21 @@ button{cursor:pointer}
 #iTexto{border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;min-height:170px;font:inherit;line-height:1.5;resize:vertical}
 .btn.morado{background:var(--pred);color:#fff}
 .metas-rapidas{display:flex;gap:8px;flex-wrap:wrap}
+.cursos-cab{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.btn.mini{padding:9px 14px;font-size:.9rem}
+.c-lista{display:flex;flex-direction:column;gap:10px}
+.curso{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--pred);border-radius:14px;padding:12px 14px}
+.curso.term{border-left-color:var(--muted);opacity:.8}
+.c-nom{font-weight:700;font-size:1.05rem;overflow-wrap:anywhere}
+.c-lin{font-size:.9rem;overflow-wrap:anywhere}
+.c-k{display:block;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.c-ult{font-size:.8rem;color:var(--muted);font-weight:600}
+.c-ult.tarde{color:var(--warn)}
+.link{background:none;border:none;color:var(--pred);font-weight:700;padding:6px 0;text-align:left}
+.link[hidden]{display:none}
+.fecha-fila{display:grid;grid-template-columns:1fr auto;gap:8px}
+.fecha-fila button{border:1px solid var(--pred);background:var(--pred-soft);border-radius:12px;padding:0 16px;font-weight:700}
+#cAvance{min-height:72px;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px;width:100%;font:inherit;resize:vertical}
 </style>
 </head>
 <body>
@@ -309,6 +324,15 @@ button{cursor:pointer}
         <button type="button" class="btn morado" id="pInforme">Enviar informe</button>
         <button type="button" class="btn ghost" id="pMetaBtn">Meta de horas</button>
       </div>
+    </section>
+    <section class="bloque" id="cBloque" aria-label="Cursos bíblicos">
+      <div class="cursos-cab">
+        <h3 id="cTit">Cursos bíblicos</h3>
+        <button type="button" class="btn morado mini" id="cNuevo">+ Nuevo</button>
+      </div>
+      <div class="comp" id="cInfo"></div>
+      <div class="c-lista" id="cLista"></div>
+      <button type="button" class="link" id="cVerTerm" hidden></button>
     </section>
     <div id="slotSincP"></div>
     <section id="pLista" style="display:flex;flex-direction:column;gap:14px" aria-label="Registros de predicación"></section>
@@ -481,6 +505,41 @@ button{cursor:pointer}
       <button type="submit" class="btn morado" id="pGuardar">Guardar</button>
     </div>
     <button type="button" class="btn danger" id="pEliminar" hidden>Eliminar</button>
+  </form>
+</div>
+
+<!-- Curso bíblico -->
+<div class="velo" id="veloCurso" hidden>
+  <form class="hoja" id="formCurso" autocomplete="off">
+    <h3 id="cFormTit">Nuevo curso bíblico</h3>
+    <div class="campo">
+      <label for="cNombre">Nombre de la persona</label>
+      <input type="text" id="cNombre" maxlength="40" placeholder="Ej.: María">
+    </div>
+    <div class="campo">
+      <label for="cLibro">¿Qué libro estudian?</label>
+      <input type="text" id="cLibro" maxlength="80" list="cLibros" placeholder="Ej.: Disfrute de la vida para siempre">
+      <datalist id="cLibros"></datalist>
+    </div>
+    <div class="campo">
+      <label for="cAvance">¿Hasta dónde avanzaron?</label>
+      <textarea id="cAvance" maxlength="160" placeholder="Ej.: Lección 12, punto 3"></textarea>
+    </div>
+    <div class="campo">
+      <label for="cFecha">Última vez que estudiaron</label>
+      <div class="fecha-fila">
+        <input type="date" id="cFecha">
+        <button type="button" id="cHoy">Hoy</button>
+      </div>
+      <span class="fecha-txt" id="cFechaTxt"></span>
+    </div>
+    <div class="error" id="cErr" role="alert"></div>
+    <div class="botones">
+      <button type="button" class="btn ghost" id="cCancelar">Cancelar</button>
+      <button type="submit" class="btn morado">Guardar</button>
+    </div>
+    <button type="button" class="btn ghost" id="cTerminar" hidden>Marcar como terminado</button>
+    <button type="button" class="btn danger" id="cEliminar" hidden>Eliminar</button>
   </form>
 </div>
 
