@@ -9,7 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => (c<0 ? '−' : '')+fmt.format(Math.abs(c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '11';
+const VERSION_APP = '12';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -867,7 +867,7 @@ function abrirInicio(){
     bs.forEach((b,i)=>b.setAttribute('aria-pressed', i===iSel));
   };
   $('#iN1').oninput = pint; $('#iN2').oninput = pint;
-  $('#iQuien').onclick = e=>{ const b=e.target.closest('button'); if(b){ iSel=Number(b.dataset.i); pint(); } };
+  $('#iQuien').onclick = e=>{ const b=e.target.closest('button'); if(b){ iSel=Number(b.dataset.i); pint(); aplicarTema(iSel); } };
   pint();
   $('#veloInicio').hidden = false;
 }
@@ -876,7 +876,7 @@ $('#formInicio').addEventListener('submit', e=>{
   if(iSel===null){ $('#iErr').textContent='Toca tu nombre para seguir.'; return; }
   const nombres = [$('#iN1').value.trim()||'Persona 1', $('#iN2').value.trim()||'Persona 2'];
   if(nombres.join('|')!==E.config.nombres.join('|')){ E.config.nombres = nombres; E.config.mod = ahora(); }
-  E.yo = iSel; verQuien = iSel;
+  E.yo = iSel; verQuien = iSel; aplicarTema();
   guardar(); pedirPersistencia();
   $('#veloInicio').hidden = true; render();
 });
@@ -919,7 +919,7 @@ $('#formAj').addEventListener('submit', e=>{
   }
   const cambio = base!==(E.config.base||0) || baseMes!==E.config.baseMes || nombres.join('|')!==E.config.nombres.join('|') || JSON.stringify(topes)!==JSON.stringify(E.config.topes||{});
   if(cambio) E.config = {base, baseMes, nombres, topes, mod:ahora()};
-  E.yo = aYo; verQuien = aYo;
+  E.yo = aYo; verQuien = aYo; aplicarTema();
   if(!guardar()) return;
   $('#veloAj').hidden=true; toast('Ajustes guardados'); render();
 });
@@ -1527,12 +1527,21 @@ window.addEventListener('popstate', ()=>{
   if(!v.hidden) v.hidden = true;
 });
 
+// ---------- Color de la app según quién la usa ----------
+function aplicarTema(quien){
+  const rosa = (quien===undefined ? E.yo : quien)===1;
+  if(rosa) document.documentElement.dataset.tema = 'rosa'; else delete document.documentElement.dataset.tema;
+  const m = document.querySelector('meta[name="theme-color"]');
+  if(m) m.setAttribute('content', rosa ? '#C93F74' : '#0F6E8C');
+}
+
 // ---------- Arranque ----------
 cargar();
 if(!almacenamientoOk) aviso('Este navegador no deja guardar datos. Abre la app en Chrome, fuera del modo incógnito.', true);
 render();
 aplicarTab();
 aplicarVoz();
+aplicarTema();
 pedirPersistencia();
 if(E.yo===null) abrirInicio();
 revisarCompartido();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0F6E8C">
-<meta name="app-version" content="11">
+<meta name="app-version" content="12">
 <meta name="description" content="Gastos e ingresos de la casa, entre dos celulares">
 <title>Cuentas de la casa</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -35,6 +35,27 @@
   --accent:#52B5D3; --accent-soft:#16343F; --pred:#A895F2; --pred-soft:#241E3B; --in:#4FC383; --out:#F07B65; --warn:#E3B04F;
   color-scheme: dark;
 }
+/* Tema rosado: se activa en el celular donde se eligió "Soy Elba" */
+:root[data-tema="rosa"]{
+  --bg:#FBF2F6; --surface:#FFFFFF; --ink:#2B1A22; --muted:#7D5E6C; --line:#F0DAE3;
+  --accent:#C93F74; --accent-soft:#FCE3ED; --pred:#8E4FC2; --pred-soft:#F3EAFB;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-tema="rosa"]:not([data-theme="light"]){
+    --bg:#1B0F15; --surface:#28171F; --ink:#F5E7EE; --muted:#BC98A9; --line:#3D2431;
+    --accent:#F390B6; --accent-soft:#45202F; --pred:#C9A3F5; --pred-soft:#2F2140;
+    color-scheme: dark;
+  }
+}
+:root[data-tema="rosa"][data-theme="dark"]{
+  --bg:#1B0F15; --surface:#28171F; --ink:#F5E7EE; --muted:#BC98A9; --line:#3D2431;
+  --accent:#F390B6; --accent-soft:#45202F; --pred:#C9A3F5; --pred-soft:#2F2140;
+  color-scheme: dark;
+}
+:root[data-tema="rosa"] .btn:not(.ghost):not(.danger):not(.morado){color:#fff}
+@media (prefers-color-scheme: dark){ :root[data-tema="rosa"]:not([data-theme="light"]) .btn:not(.ghost):not(.danger):not(.morado){color:#3A0C20} }
+:root[data-tema="rosa"][data-theme="dark"] .btn:not(.ghost):not(.danger):not(.morado){color:#3A0C20}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
@@ -791,7 +812,7 @@ button{cursor:pointer}
 
 <div id="toast" hidden></div>
 
-<script src="voz.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="voz.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
