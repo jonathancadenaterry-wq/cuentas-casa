@@ -9,7 +9,7 @@ const DIAS_L = ['domingo','lunes','martes','miércoles','jueves','viernes','sáb
 const fmt = new Intl.NumberFormat('es-EC',{style:'currency',currency:'USD'});
 const money = c => (c<0 ? '−' : '')+fmt.format(Math.abs(c||0)/100);
 const APP = 'cuentas-casa';
-const VERSION_APP = '10';
+const VERSION_APP = '11';
 const CLAVE = 'cuentas_casa_v1';
 
 const CATS = {
@@ -97,7 +97,7 @@ function textoHace(ms){
 let E = {
   movs:{},                     // id -> movimiento (los borrados quedan marcados para que el borrado viaje al otro celular)
   config:{base:0, baseMes:null, nombres:['Jonathan','Elba'], topes:{}, mod:0},
-  dispositivo:null, yo:null, ultEnvio:0, ultRecibo:null,
+  dispositivo:null, yo:null, ultEnvio:0, ultRecibo:null, ultCopia:0,
   pred:{},                     // id -> registro de predicación (cada uno es de una persona: quien)
   predMes:{},                  // "2026-11|0" -> {cursos, mod}
   predCfg:{metas:{}},          // "0" -> {min, mod}
@@ -238,6 +238,7 @@ function render(){
   $('#vIngP').textContent = '+ '+money(r.ingP);
   $('#vGasP').textContent = '− '+money(r.gasP);
   renderSinc();
+  renderCopia();
   renderFijos();
   renderCats();
   renderLista(r.delMes);
@@ -667,6 +668,52 @@ async function enviar(){
   } else toast('Listo. '+nombre(otro())+' debe tocar «Recibir de '+nombre(E.yo===null?0:E.yo)+'».');
   E.ultEnvio = ahora(); guardar(); render();
 }
+// ---------- Copia de seguridad ----------
+async function guardarCopia(){
+  const p = paquete(); p.copia = true;
+  const texto = JSON.stringify(p), nombreA = 'copia-cuentas-casa-'+hoyISO()+'.txt';
+  let hecho = false;
+  try{
+    const f = new File([texto], nombreA, {type:'text/plain'});
+    if(navigator.canShare && navigator.canShare({files:[f]})){
+      await navigator.share({files:[f], title:'Copia de Cuentas de la casa'});
+      hecho = true;
+    }
+  }catch(e){ if(e && e.name==='AbortError'){ toast('Copia cancelada'); return; } }
+  if(!hecho){ descargar(texto, nombreA); toast('Copia guardada en Descargas: '+nombreA); }
+  else toast('Copia lista. Si elegiste Drive o Archivos, queda guardada ahí.');
+  E.ultCopia = ahora(); guardar(); render(); pintarProteccion();
+}
+let modoArchivo = 'recibir';
+function restaurarCopia(){ modoArchivo = 'restaurar'; const i=$('#archivo'); i.value=''; i.click(); }
+async function pintarProteccion(){
+  const est = $('#pEstado');
+  let prot = null;
+  try{ if(navigator.storage && navigator.storage.persisted){ prot = await navigator.storage.persisted(); if(!prot && navigator.storage.persist) prot = await navigator.storage.persist(); } }catch(e){}
+  est.classList.toggle('si', prot===true);
+  est.querySelector('.ico').textContent = prot===true ? '✓' : '!';
+  $('#pEstadoTxt').textContent = prot===true
+    ? 'El navegador protege los datos de esta app: no los borrará solo, aunque falte espacio. Solo se pierden si alguien borra los datos de Chrome a mano.'
+    : prot===false
+      ? 'El navegador todavía no marca esta app como protegida (lo decide solo, según el uso y si está instalada). Úsala desde el ícono y guarda copias.'
+      : 'Este navegador no informa si protege los datos. Guarda copias de vez en cuando.';
+  const d = haceDias(E.ultCopia);
+  $('#pUltCopia').innerHTML = E.ultCopia ? 'Última copia: <b>'+(d<=0?'hoy':d===1?'ayer':'hace '+d+' días')+'</b>.' : 'Aún no has guardado ninguna copia.';
+}
+function renderCopia(){
+  // Recordatorio de copia: cada 30 días, solo si ya hay datos de hace unos días y no está el aviso de envío
+  const todos = [...Object.values(E.movs), ...Object.values(E.pred)].filter(x=>!x.borrado);
+  const antiguo = todos.reduce((m,x)=>Math.min(m, x.creado||ahora()), ahora());
+  const conDatos = todos.length && haceDias(antiguo) >= 3;
+  const d = haceDias(E.ultCopia);
+  const toca = conDatos && (d===null || d>=30) && $('#recSinc').hidden;
+  $('#recCopia').hidden = !toca;
+  if(toca) $('#recCopiaTxt').textContent = d===null ? 'Guarda una copia de seguridad en Drive o en Archivos.' : 'Hace '+d+' días que no guardas una copia de seguridad.';
+}
+$('#recCopiaBtn').onclick = guardarCopia;
+$('#aCopia').onclick = guardarCopia;
+$('#aRestaurar').onclick = restaurarCopia;
+
 $('#btnEnviar').onclick = enviar;
 $('#recSincBtn').onclick = enviar;
 $('#ponerBase').onclick = ()=>{ abrirAjustes(); setTimeout(()=>$('#aBase').focus(), 80); };
@@ -684,13 +731,15 @@ function abrirRecibir(){
 $('#btnRecibir').onclick = abrirRecibir;
 $('#recCancelar').onclick = ()=>$('#veloRecibir').hidden=true;
 $('#veloRecibir').addEventListener('click', e=>{ if(e.target.id==='veloRecibir') $('#veloRecibir').hidden=true; });
-$('#recElegir').onclick = ()=>{ const i=$('#archivo'); i.value=''; i.click(); };
+$('#recElegir').onclick = ()=>{ modoArchivo = 'recibir'; const i=$('#archivo'); i.value=''; i.click(); };
 $('#archivo').addEventListener('change', async ()=>{
   const f = $('#archivo').files && $('#archivo').files[0];
   if(!f) return;
   $('#veloRecibir').hidden = true;
   if(f.size > 5*1024*1024){ toast('Ese archivo es demasiado grande para ser de esta app.'); return; }
-  try{ importarTexto(await f.text()); }catch(e){ toast('No se pudo leer el archivo.'); }
+  const modo = modoArchivo; modoArchivo = 'recibir';
+  if(modo==='restaurar') $('#veloAj').hidden = true;
+  try{ importarTexto(await f.text(), {restaurar: modo==='restaurar'}); }catch(e){ toast('No se pudo leer el archivo.'); }
 });
 
 function limpiarTopes(t){
@@ -719,11 +768,12 @@ function limpiarFijo(v){
   return {id:v.id, nombre:String(v.nombre||'').slice(0,40)||'Gasto fijo', cat:CATS.gasto.some(c=>c.id===v.cat)?v.cat:'otros',
     monto:n(v.monto,100000000), dia:n(v.dia,31), varios:!!v.varios, orden:Number(v.orden)||0, mod:Number(v.mod)||0, borrado:!!v.borrado};
 }
-function importarTexto(texto){
+function importarTexto(texto, op){
+  op = op || {};
   let p;
   try{ p = JSON.parse(texto); }catch(e){ toast('Ese archivo no es de Cuentas de la casa.'); return false; }
   if(!p || p.app!==APP || !Array.isArray(p.movs)){ toast('Ese archivo no es de Cuentas de la casa.'); return false; }
-  if(p.dispositivo && p.dispositivo===E.dispositivo){ toast('Ese archivo salió de este mismo celular.'); return false; }
+  if(!op.restaurar && p.dispositivo && p.dispositivo===E.dispositivo){ toast('Ese archivo salió de este mismo celular. Para recuperar una copia tuya, usa ⚙ Ajustes → Restaurar copia.'); return false; }
   let nuevos=0, cambiados=0, borrados=0;
   for(const crudo of p.movs){
     const v = limpiarMov(crudo); if(!v) continue;
@@ -776,7 +826,7 @@ function importarTexto(texto){
     const loc = E.fijos[v.id];
     if(!loc || v.mod > (loc.mod||0)){ E.fijos[v.id] = v; if(v.mod>1) fjCambios++; }
   }
-  E.ultRecibo = {de:String(p.de||'').slice(0,20), generado:String(p.generado||''), cuando:ahora()};
+  if(!op.restaurar && !p.copia) E.ultRecibo = {de:String(p.de||'').slice(0,20), generado:String(p.generado||''), cuando:ahora()};
   if(!guardar()) return false;
   pedirPersistencia();
   render();
@@ -789,7 +839,8 @@ function importarTexto(texto){
   if(pNuevos || pCambios) msj.push('Predicación: '+[pNuevos?pNuevos+(pNuevos===1?' registro nuevo':' registros nuevos'):'', pCambios?pCambios+(pCambios===1?' cambio':' cambios'):''].filter(Boolean).join(', '));
   if(cNuevos || cCambios) msj.push('Cursos bíblicos: '+[cNuevos?cNuevos+(cNuevos===1?' nuevo':' nuevos'):'', cCambios?cCambios+(cCambios===1?' actualizado':' actualizados'):''].filter(Boolean).join(', '));
   if(fjCambios) msj.push('Gastos fijos: '+fjCambios+(fjCambios===1?' cambio':' cambios'));
-  toast(msj.length ? 'Datos juntados. '+msj.join('. ')+'.' : 'Ya estaban al día. No había nada nuevo.');
+  if(op.restaurar) toast(msj.length ? 'Copia restaurada. '+msj.join('. ')+'.' : 'La copia no tenía nada que no estuviera ya en la app.');
+  else toast(msj.length ? 'Datos juntados. '+msj.join('. ')+'.' : 'Ya estaban al día. No había nada nuevo.');
   return true;
 }
 
@@ -844,6 +895,7 @@ function abrirAjustes(){
   $('#aN1').oninput = pint; $('#aN2').oninput = pint;
   $('#aErr').textContent='';
   $('#aVoz').checked = E.voz!==false;
+  pintarProteccion();
   $('#veloAj').hidden=false;
 }
 $('#btnAjustes').onclick=abrirAjustes;
@@ -1481,6 +1533,7 @@ if(!almacenamientoOk) aviso('Este navegador no deja guardar datos. Abre la app e
 render();
 aplicarTab();
 aplicarVoz();
+pedirPersistencia();
 if(E.yo===null) abrirInicio();
 revisarCompartido();
 })();
